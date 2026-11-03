@@ -75,7 +75,7 @@ Mac 中文桌面办公助手，当前版本 **0.3.0**。包含本机待办、完
 
 ## 构建与验证
 
-项目目录：`/Users/newb/Documents/works/dev`，于2026-11-04从原 `ecommerce` 目录迁入。已启用本地Git管理，主分支为 `main`；源码、测试、脚本、依赖锁文件和文档纳入版本管理，`.build/`、`dist/`及本地环境凭证文件忽略。尚未配置远程仓库。
+项目目录：`/Users/newb/Documents/works/dev`，于2026-11-04从原 `ecommerce` 目录迁入。已启用Git管理，主分支为 `main`；源码、测试、脚本、依赖锁文件和文档纳入版本管理，`.build/`、`dist/`及本地环境凭证文件忽略。远程仓库为 `git@github.com:NewBLife/OfficeAssistant.git`，本地远程名称为 `OfficeAssitant`，`main` 跟踪该远程的 `main` 分支。
 
 要求 Apple Silicon Mac、macOS 14+，以及包含 Swift 6 和 Swift Testing 的 Apple 开发工具链。当前构建环境为 macOS 26.6.2 / Swift 6.3.3；macOS 14 尚未实机验证。
 
