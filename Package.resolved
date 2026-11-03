@@ -1,0 +1,14 @@
+{
+  "pins" : [
+    {
+      "identity" : "speech-sdk-spm",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/microsoft/speech-sdk-spm",
+      "state" : {
+        "revision" : "4a4766e6c57d5fe21d36a8af9935a8a4d5618802",
+        "version" : "1.52.0"
+      }
+    }
+  ],
+  "version" : 2
+}

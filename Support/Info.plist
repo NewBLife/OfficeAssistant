@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>CFBundleIdentifier</key><string>local.officeassistant.desktop</string>
+  <key>CFBundleName</key><string>OfficeAssistant</string>
+  <key>CFBundleDisplayName</key><string>办公助手</string>
+  <key>CFBundleExecutable</key><string>OfficeAssistant</string>
+  <key>CFBundleIconFile</key><string>AppIcon</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>CFBundleShortVersionString</key><string>0.3.0</string>
+  <key>CFBundleVersion</key><string>4</string>
+  <key>NSMicrophoneUsageDescription</key><string>办公助手需要麦克风来记录你的会议并显示语音识别和翻译字幕。</string>
+  <key>NSAudioCaptureUsageDescription</key><string>办公助手需要采集你选定的会议软件声音，以显示实时双语字幕。</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+  <key>NSSupportsAutomaticTermination</key><false/>
+  <key>NSSupportsSuddenTermination</key><false/>
+</dict></plist>

@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+export CLANG_MODULE_CACHE_PATH="$PWD/.build/clang-cache"
+export SWIFTPM_MODULECACHE_OVERRIDE="$PWD/.build/swift-cache"
+swift build --disable-sandbox --scratch-path .build --cache-path .build/cache --config-path .build/config --security-path .build/security -c release --product OfficeAssistant
+binary_path="$(swift build --disable-sandbox --scratch-path .build -c release --show-bin-path)"
+app_path="$PWD/dist/OfficeAssistant.app"
+mkdir -p "$app_path/Contents/MacOS" "$app_path/Contents/Resources" "$app_path/Contents/Frameworks"
+cp "$binary_path/OfficeAssistant" "$app_path/Contents/MacOS/OfficeAssistant"
+cp Support/Info.plist "$app_path/Contents/Info.plist"
+speech_artifact="$PWD/.build/artifacts/speech-sdk-spm/MicrosoftCognitiveServicesSpeech-macOS"
+speech_framework="$speech_artifact/MicrosoftCognitiveServicesSpeech.xcframework/macos-arm64_x86_64/MicrosoftCognitiveServicesSpeech.framework"
+ditto "$speech_framework" "$app_path/Contents/Frameworks/MicrosoftCognitiveServicesSpeech.framework"
+cp "$speech_artifact/LICENSE.md" "$app_path/Contents/Resources/Microsoft-Speech-LICENSE.md"
+cp "$speech_artifact/ThirdPartyNotices.md" "$app_path/Contents/Resources/Microsoft-Speech-ThirdPartyNotices.md"
+codesign --force --sign - "$app_path/Contents/Frameworks/MicrosoftCognitiveServicesSpeech.framework"
+swift scripts/make-icon.swift "$app_path/Contents/Resources/AppIcon.icns"
+codesign --force --sign - "$app_path"
+printf '应用已生成：%s\n' "$app_path"

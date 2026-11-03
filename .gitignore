@@ -1,0 +1,8 @@
+.build/
+dist/
+.DS_Store
+.swiftpm/xcode/package.xcworkspace/xcuserdata/
+*.xcuserstate
+.env
+.env.*
+!.env.example
