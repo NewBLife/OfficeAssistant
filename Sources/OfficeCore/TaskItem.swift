@@ -23,6 +23,7 @@ public struct TaskItem: Identifiable, Codable, Equatable, Sendable {
     public var seriesID: UUID
     public var nextOccurrenceID: UUID?
     public var snoozedUntil: Date?
+    public var groupID: UUID?
     public var meetingLinks: [TaskMeetingLink]?
     public var meetingActionReceipts: [MeetingActionReceipt]?
 

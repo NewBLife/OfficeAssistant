@@ -23,6 +23,7 @@ public struct MeetingSession: Identifiable, Codable, Equatable, Sendable {
     public var id = UUID(); public var title: String; public var participantsNote = ""
     public var startedAt = Date(); public var endedAt: Date?; public var state: MeetingState = .ready
     public var configuration: AIConfiguration; public var retainAudio = false; public var remoteTasks: [RemoteTask] = []
+    public var groupID: UUID?
     public var audioFiles: [String] = []; public var importOffset: Int64 = 0
     public var importIdentity: AudioImportIdentity?
     public init(title: String, configuration: AIConfiguration) { self.title = title; self.configuration = configuration }
