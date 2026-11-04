@@ -10,6 +10,7 @@ public struct MeetingSetup {
     public var captureMicrophone = true
     public var microphoneDeviceID: UInt32?
     public var systemSource: SystemAudioSource?
+    public var groupID: UUID?
     public var retainAudio = false
     public init(title: String, configuration: AIConfiguration) { self.title = title; self.configuration = configuration }
 }
@@ -29,6 +30,7 @@ public struct MeetingSetup {
     public var hasUnclosedRemoteTasks: Bool { history.contains { $0.remoteTasks.contains(where: \.needsStop) } || (meeting?.remoteTasks.contains(where: \.needsStop) ?? false) }
     public var canResume: Bool { !isActive && savedSetupMeetingID == meeting?.id && savedSetup != nil && (meeting?.state == .paused || meeting?.state == .interrupted) }
     public var canProcessBuffered: Bool { !isActive && !pending.isEmpty }
+    @ObservationIgnored private let groups: GroupStore?
     @ObservationIgnored private let repository: any MeetingRepository
     @ObservationIgnored private let credentials: any CredentialStore
     @ObservationIgnored private let translator: ChatCompletionTranslator
@@ -52,9 +54,9 @@ public struct MeetingSetup {
     @ObservationIgnored private var importURL: URL?
     @ObservationIgnored private var recognizedThrough: [AudioSourceID: Double] = [:]
     @ObservationIgnored private var lastPartialUpdate: [SegmentID: Date] = [:]
-    public init(repository: any MeetingRepository, credentials: any CredentialStore, translator: ChatCompletionTranslator? = nil,
+    public init(repository: any MeetingRepository, credentials: any CredentialStore, translator: ChatCompletionTranslator? = nil, groups: GroupStore? = nil,
                 factory: ((RecognitionContext, Bool) -> any SpeechRecognizer)? = nil, captureFactory: ((MeetingSetup) -> [(AudioSourceID, any AudioCapture)])? = nil) {
-        self.repository = repository; self.credentials = credentials; self.translator = translator ?? ChatCompletionTranslator(credentials: credentials); self.factory = factory; self.captureFactory = captureFactory
+        self.groups = groups; self.repository = repository; self.credentials = credentials; self.translator = translator ?? ChatCompletionTranslator(credentials: credentials); self.factory = factory; self.captureFactory = captureFactory
         do {
             history = try repository.list()
             for var item in history where item.state == .recording || item.state == .finishing || item.state == .ready {
@@ -75,6 +77,16 @@ public struct MeetingSetup {
         }
         meeting = item; segments = loaded; errorMessage = nil
     }
+    public func moveToGroup(id: UUID, groupID: UUID?) throws {
+        guard !(isActive && meeting?.id == id) else { throw OfficeError.invalid("请先暂停或停止记录，再移动会议分组。") }
+        guard let groups else { throw OfficeError.invalid("分组服务不可用。") }
+        let target = try groups.normalized(groupID)
+        guard groupID == nil || target != nil else { throw OfficeError.invalid("目标分组已删除。") }
+        guard var item = try repository.list().first(where: { $0.id == id }) else { throw OfficeError.invalid("会议已不存在。") }
+        item.groupID = target; try repository.save(item)
+        if meeting?.id == id { meeting = item }
+        reloadHistory()
+    }
     public func delete(_ id: UUID, includingAudio: Bool = false) throws {
         guard !isActive else { throw OfficeError.invalid("请先暂停或停止记录，再删除会议。") }
         guard let item = try repository.list().first(where: { $0.id == id }) else { throw OfficeError.invalid("会议已删除或不可用。") }
@@ -92,7 +104,10 @@ public struct MeetingSetup {
         }
     }
     private func persist() throws {
-        if let meeting { try repository.save(meeting) }; history = try repository.list(); onChange?()
+        if var item = meeting {
+            if let groups, groups.isLoaded { item.groupID = GroupRules.effectiveGroupID(item.groupID, groups: groups.groups) }
+            try repository.save(item); meeting = item
+        }; history = try repository.list(); onChange?()
     }
     private func preflight(_ configuration: AIConfiguration, file: Bool) throws {
         try configuration.validate()
@@ -114,6 +129,7 @@ public struct MeetingSetup {
         try preflight(setup.configuration, file: file)
         guard !setup.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw OfficeError.invalid("请填写会议标题。") }
         var item = MeetingSession(title: setup.title, configuration: setup.configuration)
+        item.groupID = setup.groupID
         item.participantsNote = setup.participants; item.retainAudio = setup.retainAudio
         cancelTranslations(); importURL = nil; savedSetupMeetingID = item.id
         meeting = item; segments = []; savedSetup = setup; errorMessage = nil; offline = false; epoch = UUID(); segmenters = [:]; recognizedThrough = [:]

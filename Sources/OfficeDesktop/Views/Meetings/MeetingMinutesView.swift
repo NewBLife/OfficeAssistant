@@ -7,6 +7,7 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
     let recording: Bool; let hasBuffered: Bool; let imported: Bool
     let tasks: TaskStore?; let links: MeetingTaskLinkService?; let preferences: AppPreferences
     let openTask: (TaskItem) -> Void; let openMeeting: (UUID, EvidenceReference?) -> Void
+    var groups: GroupStore? = nil
     @State private var documents: [MinutesDocument] = []; @State private var selected: UUID?
     @State private var sheet: MinutesSheet?; @State private var error: String?; @State private var incrementalChoice = false
     private var document: MinutesDocument? { documents.first { $0.id == selected } ?? documents.first }
@@ -46,7 +47,7 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                         if let ja = doc.overviewJA { Text(ja).foregroundStyle(.secondary).textSelection(.enabled) }
                         pointSection("议题摘要", doc.topics); pointSection("明确决定", doc.decisions); pointSection("未解决问题", doc.openQuestions)
                     } else { ContentUnavailableView("等待生成会议纪要", systemImage: "doc.text", description: Text("根据已保存的最终原文生成摘要、决定、问题和行动项。仅转写会议也可使用。")) }
-                    MeetingActionsView(meeting: meeting, coordinator: coordinator, tasks: tasks, links: links, preferences: preferences, showCandidates: true, openTask: openTask, openMeeting: openMeeting)
+                    MeetingActionsView(meeting: meeting, coordinator: coordinator, tasks: tasks, links: links, preferences: preferences, showCandidates: true, openTask: openTask, openMeeting: openMeeting, groups: groups)
                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
             }
         }.onAppear(perform: load).onChange(of: coordinator.changeCount) { _, _ in load() }

@@ -36,6 +36,7 @@ public enum TaskRules {
         if let due = item.dueAt, let nextDate = try nextDueDate(after: due, rule: item.repeatRule, timeZoneID: item.timeZoneID, now: now) {
             var new = TaskItem(title: item.title, notes: item.notes, owner: item.owner, createdAt: now,
                                dueAt: nextDate, timeZoneID: item.timeZoneID, repeatRule: item.repeatRule)
+            new.groupID = item.groupID
             new.seriesID = item.seriesID
             new.meetingLinks = item.meetingLinks; new.meetingActionReceipts = item.meetingActionReceipts
             completed.nextOccurrenceID = new.id; next = new

@@ -3,6 +3,8 @@ import OfficeCore
 
 @MainActor struct MeetingSetupView: View {
     @Environment(\.dismiss) private var dismiss
+    let groups: GroupStore?
+    @State private var groupID: UUID?
     let importing: Bool
     let submit: (MeetingSetup) -> Void
     @State private var title: String
@@ -17,7 +19,8 @@ import OfficeCore
     @State private var loading = false
     @State private var retain = false
     @State private var error: String?
-    init(configuration: AIConfiguration, importing: Bool, submit: @escaping (MeetingSetup) -> Void) {
+    init(configuration: AIConfiguration, importing: Bool, groups: GroupStore? = nil, defaultGroupID: UUID? = nil, submit: @escaping (MeetingSetup) -> Void) {
+        self.groups = groups; _groupID = State(initialValue: defaultGroupID)
         self.importing = importing; self.submit = submit
         _config = State(initialValue: configuration)
         _title = State(initialValue: "会议 " + Date().formatted(.dateTime.month().day().hour().minute()))
@@ -27,6 +30,7 @@ import OfficeCore
             HStack { Text(importing ? "导入音频" : "开始会议记录").font(.title2.bold()); Spacer(); Button("取消") { dismiss() }.keyboardShortcut(.cancelAction) }.padding(24)
             Form {
                 Section("会议") {
+                    if let groups { GroupPicker(groups: groups, selection: $groupID) }
                     TextField("标题", text: $title)
                     TextField("参与者备注（可选）", text: $participants)
                     Picker("记录模式", selection: Binding(get: { config.shouldTranslate }, set: { config.translationEnabled = $0 })) {
@@ -87,7 +91,7 @@ import OfficeCore
                 }
             }.formStyle(.grouped)
             HStack { Spacer(); Button(importing ? "开始处理音频" : "开始识别") {
-                var setup = MeetingSetup(title: title, configuration: config); setup.participants = participants
+                var setup = MeetingSetup(title: title, configuration: config); setup.participants = participants; setup.groupID = groupID
                 setup.captureMicrophone = mic; setup.microphoneDeviceID = micID == 0 ? nil : micID
                 setup.systemSource = scene == "线上会议" ? sources.first { $0.id == sourceID } : nil; setup.retainAudio = retain
                 submit(setup); dismiss()

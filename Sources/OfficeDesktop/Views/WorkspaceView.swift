@@ -2,16 +2,17 @@ import SwiftUI
 import OfficeCore
 
 private enum WorkspaceSection: String, CaseIterable, Identifiable {
-    case today, all, completed, meetings, ai, settings
+    case today, all, completed, meetings, ai, settings, groups
     var id: Self { self }
-    var title: String { switch self { case .today: "今天"; case .all: "全部待办"; case .completed: "已完成"; case .meetings: "会议记录"; case .ai: "AI 服务"; case .settings: "设置" } }
-    var icon: String { switch self { case .today: "sun.max"; case .all: "checklist"; case .completed: "checkmark.circle"; case .meetings: "waveform"; case .ai: "sparkles"; case .settings: "gearshape" } }
+    var title: String { switch self { case .today: "今天"; case .all: "全部待办"; case .completed: "已完成"; case .meetings: "会议记录"; case .ai: "AI 服务"; case .settings: "设置"; case .groups: "分组" } }
+    var icon: String { switch self { case .today: "sun.max"; case .all: "checklist"; case .completed: "checkmark.circle"; case .meetings: "waveform"; case .ai: "sparkles"; case .settings: "gearshape"; case .groups: "folder" } }
 }
 
 @MainActor public struct WorkspaceView: View {
     @Bindable var model: OfficeAppModel
     @Environment(\.openWindow) private var openWindow
     @State private var section: WorkspaceSection? = .today
+    @State private var groupScope: GroupScope = .all
     @State private var search = ""
     @State private var statusFilter = "全部状态"
     @State private var editing: TaskItem?
@@ -20,28 +21,16 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
 
     public var body: some View {
         NavigationSplitView {
-            List(selection: $section) {
-                Section("待办") {
-                    ForEach([WorkspaceSection.today, .all, .completed]) { entry in
-                        HStack {
-                            Label(entry.title, systemImage: entry.icon)
-                            Spacer()
-                            if entry == .today { Text("\(model.todayCount)").foregroundStyle(.secondary).monospacedDigit() }
-                        }.tag(entry)
-                    }
-                }
-                Section("工作空间") {
-                    ForEach([WorkspaceSection.meetings, .ai, .settings]) { Label($0.title, systemImage: $0.icon).tag($0) }
-                }
-            }.navigationTitle("办公助手").navigationSplitViewColumnWidth(min: 185, ideal: 210, max: 260)
+            sidebar.navigationTitle("办公助手").navigationSplitViewColumnWidth(min: 185, ideal: 210, max: 260)
                 .safeAreaInset(edge: .bottom) {
                     HStack { Image(systemName: "externaldrive"); Text("记录保存在这台 Mac") }.font(.caption).foregroundStyle(.secondary).padding(16)
                 }
         } detail: {
-            if section == .settings { SettingsView(model: model) }
+            if section == .groups { GroupWorkspaceView(model: model, scope: groupScope, openTask: { editing = $0 }, openMeeting: openSource) }
+            else if section == .settings { SettingsView(model: model) }
             else if section == .ai { AISettingsView(settings: model.aiSettings, credentials: model.credentials, locked: model.meetings?.isActive ?? false) }
             else if section == .meetings {
-                if let meetings = model.meetings { MeetingWorkspaceView(controller: meetings, settings: model.aiSettings, minutes: model.minutes, tasks: model.store, links: model.meetingLinks, preferences: model.preferences.value, focus: model.requestedEvidence, sourceRequestID: model.meetingSourceRequestID, openTask: { editing = $0 }, openMeeting: openSource) }
+                if let meetings = model.meetings { MeetingWorkspaceView(controller: meetings, settings: model.aiSettings, minutes: model.minutes, tasks: model.store, links: model.meetingLinks, preferences: model.preferences.value, focus: model.requestedEvidence, sourceRequestID: model.meetingSourceRequestID, openTask: { editing = $0 }, openMeeting: openSource, groups: model.groups) }
                 else { ContentUnavailableView("会议记录暂时无法打开", systemImage: "externaldrive.badge.exclamationmark", description: Text("请重启应用重试，原有记录已保留。")) }
             } else if let store = model.store {
                 taskWorkspace(store)
@@ -53,7 +42,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
             }
         }.frame(minWidth: 900, minHeight: 640)
             .sheet(item: $editing) { item in
-                if let store = model.store { TaskEditorView(item: item, store: store, preferences: model.preferences.value) }
+                if let store = model.store { TaskEditorView(item: item, store: store, preferences: model.preferences.value, groups: model.groups) }
             }
             .onReceive(NotificationCenter.default.publisher(for: .officeNewTask)) { _ in newTask() }
             .onReceive(NotificationCenter.default.publisher(for: .officeShowToday)) { _ in section = .today }
@@ -62,6 +51,27 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
             .onChange(of: model.wantsToday) { _, _ in consumeRequests() }
             .onChange(of: model.wantsMeetingID) { _, _ in consumeRequests() }
             .alert("无法打开来源会议", isPresented: Binding(get: { sourceError != nil }, set: { if !$0 { sourceError = nil } })) { Button("好") { sourceError = nil } } message: { Text(sourceError ?? "") }
+    }
+    private var sidebar: some View {
+        List {
+            Section("待办") {
+                ForEach([WorkspaceSection.today, .all, .completed]) { entry in navigationRow(entry) }
+            }
+            Section("工作空间") {
+                ForEach([WorkspaceSection.meetings, .ai, .settings]) { entry in navigationRow(entry) }
+            }
+            GroupSidebarView(groups: model.groups, selection: $groupScope, active: section == .groups) { section = .groups }
+        }.listStyle(.sidebar)
+    }
+    private func navigationRow(_ entry: WorkspaceSection) -> some View {
+        Button { section = entry } label: {
+            HStack {
+                Label(entry.title, systemImage: entry.icon); Spacer()
+                if entry == .today { Text("\(model.todayCount)").foregroundStyle(.secondary).monospacedDigit() }
+            }.padding(.vertical, 5).padding(.horizontal, 3)
+                .background(section == entry ? Color.accentColor.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain)
     }
     private func taskWorkspace(_ store: TaskStore) -> some View {
         VStack(spacing: 0) {
@@ -112,13 +122,13 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
                                                description: Text(search.isEmpty ? "点击“新增待办”，记录下一件要做的事。" : "试试其他标题、备注或负责人。"))
                             .frame(maxWidth: .infinity, minHeight: 240)
                     } else {
-                        TaskListView(items: listed, store: store, now: model.now, openMeeting: openSource) { editing = $0 }
+                        TaskListView(items: listed, store: store, now: model.now, openMeeting: openSource, groups: model.groups) { editing = $0 }
                     }
                     if section == .today {
                         let undated = matching(store.items.filter { $0.status != .completed && $0.dueAt == nil })
                         if !undated.isEmpty {
                             Text("未安排时间 · \(undated.count)").font(.headline).foregroundStyle(.secondary)
-                            TaskListView(items: undated, store: store, now: model.now, openMeeting: openSource) { editing = $0 }
+                            TaskListView(items: undated, store: store, now: model.now, openMeeting: openSource, groups: model.groups) { editing = $0 }
                         }
                     }
                 }.padding(30).frame(maxWidth: 1000)
@@ -140,7 +150,9 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     }
     private func newTask() {
         guard model.store?.isLoaded == true else { return }
-        editing = TaskItem(title: "", timeZoneID: model.preferences.value.timeZoneID)
+        var draft = TaskItem(title: "", timeZoneID: model.preferences.value.timeZoneID)
+        if section == .groups { draft.groupID = groupScope.defaultGroupID }
+        editing = draft
     }
     private func consumeRequests() {
         if model.wantsMeetingID != nil { section = .meetings; model.wantsMeetingID = nil }

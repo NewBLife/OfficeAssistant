@@ -6,11 +6,12 @@ import OfficeCore
     public private(set) var items: [TaskItem] = []
     public var errorMessage: String?
     public private(set) var isLoaded = false
+    @ObservationIgnored private let groups: GroupStore?
     @ObservationIgnored private let repository: any TaskRepository
     @ObservationIgnored public var onChange: (() -> Void)?
 
-    public init(repository: any TaskRepository) {
-        self.repository = repository
+    public init(repository: any TaskRepository, groups: GroupStore? = nil) {
+        self.repository = repository; self.groups = groups
         do { try reload() } catch { errorMessage = error.localizedDescription }
     }
     public func reload() throws {
@@ -20,7 +21,12 @@ import OfficeCore
     private func commit(_ snapshot: [TaskItem]) throws {
         guard isLoaded else { throw OfficeError.invalid("原有数据未能读取，已暂停保存，避免覆盖。请重试读取。") }
         do {
-            try repository.save(snapshot); items = snapshot; errorMessage = nil; onChange?()
+            let normalized = snapshot.map { value -> TaskItem in
+                var value = value
+                if let groups, groups.isLoaded { value.groupID = GroupRules.effectiveGroupID(value.groupID, groups: groups.groups) }
+                return value
+            }
+            try repository.save(normalized); items = normalized; errorMessage = nil; onChange?()
         } catch { errorMessage = error.localizedDescription; throw error }
     }
     public func upsert(_ item: TaskItem) throws {
@@ -40,6 +46,13 @@ import OfficeCore
         }
         var snapshot = items.filter { $0.id != item.id }; snapshot.append(item)
         try commit(snapshot)
+    }
+    public func moveToGroup(id: UUID, groupID: UUID?) throws {
+        guard let groups else { throw OfficeError.invalid("分组服务不可用。") }
+        let target = try groups.normalized(groupID)
+        guard groupID == nil || target != nil else { throw OfficeError.invalid("目标分组已删除。") }
+        guard var item = items.first(where: { $0.id == id }) else { throw OfficeError.invalid("待办已不存在。") }
+        item.groupID = target; try commit(items.map { $0.id == id ? item : $0 })
     }
     public func delete(id: UUID) throws { try commit(items.filter { $0.id != id }) }
     public func complete(id: UUID, at now: Date) throws {

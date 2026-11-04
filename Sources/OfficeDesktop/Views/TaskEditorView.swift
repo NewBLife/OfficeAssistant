@@ -3,6 +3,7 @@ import OfficeCore
 
 @MainActor struct TaskEditorView: View {
     @Environment(\.dismiss) private var dismiss
+    let groups: GroupStore?
     let store: TaskStore
     let preferences: AppPreferences
     let isNew: Bool
@@ -12,8 +13,8 @@ import OfficeCore
     @State private var deadline: Date
     @State private var message: String?
 
-    init(item: TaskItem, store: TaskStore, preferences: AppPreferences) {
-        self.store = store; self.preferences = preferences
+    init(item: TaskItem, store: TaskStore, preferences: AppPreferences, groups: GroupStore? = nil) {
+        self.groups = groups; self.store = store; self.preferences = preferences
         isNew = !store.items.contains { $0.id == item.id }
         _draft = State(initialValue: item)
         _hasDeadline = State(initialValue: item.dueAt != nil)
@@ -38,6 +39,7 @@ import OfficeCore
                     }
                 }
                 Section("事项") {
+                    if let groups { GroupPicker(groups: groups, selection: $draft.groupID) }
                     TextField("标题", text: $draft.title).accessibilityIdentifier("taskTitle")
                     TextField("备注", text: $draft.notes, axis: .vertical).lineLimit(2...4)
                     HStack {

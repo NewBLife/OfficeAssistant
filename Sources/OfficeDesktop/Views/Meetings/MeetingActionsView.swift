@@ -8,6 +8,7 @@ private struct ActionPresentation: Identifiable {
     let meeting: MeetingSession; let coordinator: MinutesCoordinator; let tasks: TaskStore?; let links: MeetingTaskLinkService?
     let preferences: AppPreferences; let showCandidates: Bool
     let openTask: (TaskItem) -> Void; let openMeeting: (UUID, EvidenceReference?) -> Void
+    var groups: GroupStore? = nil
     @State private var candidates: [ActionCandidate] = []; @State private var presentation: ActionPresentation?
     @State private var error: String?; @State private var selected: Set<UUID> = []; @State private var batchConfirm = false; @State private var unlink: UUID?
     private var related: [TaskItem] { (tasks?.items ?? []).filter { ($0.meetingLinks ?? []).contains { $0.meetingID == meeting.id } } }
@@ -28,7 +29,7 @@ private struct ActionPresentation: Identifiable {
                 }
                 if let tasks, tasks.isLoaded {
                     if related.isEmpty { ContentUnavailableView("尚未关联待办", systemImage: "checklist", description: Text("从纪要行动项确认加入，或在这里新建、关联已有待办。")) }
-                    TaskListView(items: related, store: tasks, now: Date(), openMeeting: openMeeting, edit: openTask)
+                    TaskListView(items: related, store: tasks, now: Date(), openMeeting: openMeeting, groups: groups, edit: openTask)
                     ForEach(related) { task in HStack { Text(task.title).font(.caption).foregroundStyle(.secondary); Spacer(); Button("解除会议关联") { unlink = task.id }.font(.caption) } }
                 } else { Text("待办库暂时无法读取，关联操作已停用。").foregroundStyle(.orange) }
             }
@@ -38,9 +39,9 @@ private struct ActionPresentation: Identifiable {
             .sheet(item: $presentation) { item in
                 if let tasks, let links {
                     if item.mode == "edit", let candidate = item.candidate {
-                        CandidateEditor(candidate: candidate) { value, draft, duplicate, add in
+                        CandidateEditor(candidate: candidate, groups: groups, defaultGroupID: (try? links.defaultGroupID(meetingID: meeting.id)) ?? meeting.groupID) { value, draft, duplicate, add, assignment in
                             try coordinator.saveCandidate(value)
-                            if add { _ = try links.accept(value, editedTask: draft, allowDuplicate: duplicate); coordinator.refresh() }
+                            if add { _ = try links.accept(value, editedTask: draft, allowDuplicate: duplicate, groupAssignment: assignment); coordinator.refresh() }
                         }
                     } else if item.mode == "associate" {
                         ExistingMeetingTaskPicker(tasks: tasks) { id in
@@ -48,7 +49,7 @@ private struct ActionPresentation: Identifiable {
                             else { try tasks.linkMeeting(taskID: id, link: TaskMeetingLink(meetingID: meeting.id, meetingTitleSnapshot: meeting.title)) }
                             coordinator.refresh()
                         }
-                    } else if item.mode == "new" { TaskEditorView(item: newTask(), store: tasks, preferences: preferences) }
+                    } else if item.mode == "new" { TaskEditorView(item: newTask(), store: tasks, preferences: preferences, groups: groups) }
                 }
             }
             .confirmationDialog("将所选行动项加入待办？负责人或时间留空时，不会补造信息或安排到点提醒。", isPresented: $batchConfirm) {
@@ -81,7 +82,7 @@ private struct ActionPresentation: Identifiable {
             }
         }.padding(15).background(.background, in: RoundedRectangle(cornerRadius: 10)).overlay(RoundedRectangle(cornerRadius: 10).stroke(.quaternary))
     }
-    private func newTask() -> TaskItem { var value = TaskItem(title: "", timeZoneID: preferences.timeZoneID); value.meetingLinks = [TaskMeetingLink(meetingID: meeting.id, meetingTitleSnapshot: meeting.title)]; return value }
+    private func newTask() -> TaskItem { var value = TaskItem(title: "", timeZoneID: preferences.timeZoneID); value.groupID = meeting.groupID; value.meetingLinks = [TaskMeetingLink(meetingID: meeting.id, meetingTitleSnapshot: meeting.title)]; return value }
     private func load() { do { candidates = try coordinator.candidates(meetingID: meeting.id); selected = selected.intersection(Set(candidates.filter { $0.reviewState == .proposed }.map(\.id))) } catch { self.error = "行动项读取失败，原记录已保留。" } }
     private func perform(_ operation: () throws -> Void) { do { try operation(); error = nil } catch { self.error = error.localizedDescription } }
     private func batchAdd() {
@@ -98,8 +99,11 @@ private struct ActionPresentation: Identifiable {
     @Environment(\.dismiss) private var dismiss
     @State private var candidate: ActionCandidate; @State private var owner: String; @State private var hasDate: Bool; @State private var date: Date
     @State private var duplicate = false; @State private var commitment = false; @State private var error: String?
-    let save: (ActionCandidate, TaskItem, Bool, Bool) throws -> Void
-    init(candidate: ActionCandidate, save: @escaping (ActionCandidate, TaskItem, Bool, Bool) throws -> Void) {
+    let groups: GroupStore?
+    @State private var groupID: UUID?
+    let save: (ActionCandidate, TaskItem, Bool, Bool, GroupAssignment) throws -> Void
+    init(candidate: ActionCandidate, groups: GroupStore?, defaultGroupID: UUID?, save: @escaping (ActionCandidate, TaskItem, Bool, Bool, GroupAssignment) throws -> Void) {
+        self.groups = groups; _groupID = State(initialValue: defaultGroupID)
         _candidate = State(initialValue: candidate); _owner = State(initialValue: candidate.owner ?? ""); _hasDate = State(initialValue: candidate.dueAt != nil)
         _date = State(initialValue: candidate.dueAt ?? Date().addingTimeInterval(3600)); self.save = save
     }
@@ -107,6 +111,7 @@ private struct ActionPresentation: Identifiable {
         VStack(alignment: .leading, spacing: 16) {
             Text("校对行动项").font(.title2.bold())
             Form {
+                if let groups { GroupPicker(groups: groups, selection: $groupID) }
                 TextField("待办标题", text: $candidate.titleZH)
                 TextField("负责人（留空为未指定）", text: $owner)
                 Text("原始时间：" + (candidate.dueText ?? "未指定"))
@@ -133,7 +138,7 @@ private struct ActionPresentation: Identifiable {
         if hasDate { candidate.clarifications.removeAll { $0 == .deadline || $0 == .meetingDate } }
         if commitment { candidate.clarifications.removeAll { $0 == .commitment || $0 == .crossChunkReview } }
         let draft = TaskItem(title: candidate.titleZH, owner: candidate.owner, dueAt: candidate.dueAt, dueText: candidate.dueText, timeZoneID: candidate.timeZoneID)
-        do { try save(candidate, draft, duplicate, add); dismiss() } catch { self.error = error.localizedDescription }
+        do { try save(candidate, draft, duplicate, add, groups?.isLoaded == true ? .explicit(groupID) : .inherit); dismiss() } catch { self.error = error.localizedDescription }
     }
 }
 @MainActor private struct ExistingMeetingTaskPicker: View {

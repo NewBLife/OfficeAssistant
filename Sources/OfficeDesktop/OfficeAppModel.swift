@@ -12,14 +12,16 @@ public extension Notification.Name {
 
 @MainActor @Observable public final class OfficeAppModel {
     public private(set) var store: TaskStore?
-    public let preferences = PreferencesStore()
-    public let aiSettings = AISettingsStore()
+    public let groups: GroupStore
+    public let preferences: PreferencesStore
+    public let aiSettings: AISettingsStore
     public let credentials = KeychainCredentialStore()
     public private(set) var meetings: MeetingSessionController?
     public private(set) var minutes: MinutesCoordinator?
     public var wantsMeetingID: UUID?
     public var requestedEvidence: EvidenceReference?
     public var meetingSourceRequestID = UUID()
+    @ObservationIgnored private let dataDirectory: URL?
     @ObservationIgnored private var meetingRepository: CoreDataMeetingRepository?
     @ObservationIgnored private var sleepObserver: NSObjectProtocol?
     public let notifications = SystemNotificationClient()
@@ -36,18 +38,22 @@ public extension Notification.Name {
     @ObservationIgnored private var wakeObserver: NSObjectProtocol?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
 
-    public init() {
+    public init(dataDirectory: URL? = nil, defaults: UserDefaults = .standard) {
+        self.dataDirectory = dataDirectory
+        if let dataDirectory { try? FileManager.default.createDirectory(at: dataDirectory, withIntermediateDirectories: true) }
+        groups = GroupStore(url: dataDirectory?.appendingPathComponent("groups.json"))
+        preferences = PreferencesStore(defaults: defaults); aiSettings = AISettingsStore(defaults: defaults)
         coordinator = ReminderCoordinator(client: notifications)
         openStore()
         do {
-            let repo = try CoreDataMeetingRepository(); meetingRepository = repo
-            meetings = MeetingSessionController(repository: repo, credentials: credentials)
+            let repo = try CoreDataMeetingRepository(url: dataDirectory?.appendingPathComponent("meetings.store")); meetingRepository = repo
+            meetings = MeetingSessionController(repository: repo, credentials: credentials, groups: groups)
             minutes = MinutesCoordinator(meetings: repo, notes: repo, generator: MinutesGenerator(credentials: credentials), linkedTasks: { [weak self] in self?.store?.items ?? [] }, isRecording: { [weak self] id in self?.meetings?.isActive == true && self?.meetings?.meeting?.id == id })
             meetings?.onFinalSegmentSaved = { [weak self] id in self?.minutes?.noticeFinal(meetingID: id) }
             meetings?.onRecordingStopped = { [weak self] id in self?.minutes?.recordingStopped(meetingID: id) }
         }
         catch { errorMessage = "会议数据库无法打开，原数据已保留。" }
-        preferences.onChange = { [weak self] in self?.refresh() }
+        preferences.onChange = { [weak self] in if self?.dataDirectory == nil { self?.refresh() } }
         readLoginStatus()
     }
     public var todayCount: Int {
@@ -55,7 +61,7 @@ public extension Notification.Name {
     }
     public var meetingLinks: MeetingTaskLinkService? {
         guard let store, let repo = meetingRepository else { return nil }
-        return MeetingTaskLinkService(tasks: store, notes: repo, meetings: repo)
+        return MeetingTaskLinkService(tasks: store, notes: repo, meetings: repo, groups: groups)
     }
     public func openMeeting(id: UUID, evidence: EvidenceReference?) throws {
         guard let meetings, let repo = meetingRepository else { throw OfficeError.invalid("会议库暂时不可用。") }
@@ -67,14 +73,14 @@ public extension Notification.Name {
     }
     public func openStore() {
         do {
-            let newStore = TaskStore(repository: try CoreDataTaskRepository())
+            let newStore = TaskStore(repository: try CoreDataTaskRepository(url: dataDirectory?.appendingPathComponent("tasks.store")), groups: groups)
             store = newStore
             newStore.onChange = { [weak self] in self?.refresh() }
             errorMessage = newStore.errorMessage
         } catch { errorMessage = "本地数据无法打开，原有文件已保留：\(error.localizedDescription)" }
     }
     public func start() {
-        guard timer == nil else { return }
+        guard dataDirectory == nil, timer == nil else { return }
         timer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
@@ -98,6 +104,7 @@ public extension Notification.Name {
         NSApp.activate(ignoringOtherApps: true)
     }
     public func refresh() {
+        guard dataDirectory == nil else { return }
         now = Date()
         // Do not cancel an in-flight notification add: the coordinator reconciles generations.
         refreshTask = Task { [weak self] in

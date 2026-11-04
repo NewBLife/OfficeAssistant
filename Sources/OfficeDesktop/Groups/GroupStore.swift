@@ -41,7 +41,9 @@ import OfficeCore
         try GroupRules.validate(next)
         do {
             // Check the disk again so externally damaged data is never overwritten.
+            let previous = groups
             try reload()
+            guard groups == previous else { throw OfficeError.invalid("分组目录已在其他位置更新，请核对最新列表后重试。") }
             let data = try JSONEncoder().encode(Snapshot(version: 1, groups: next))
             try write(data, url); groups = next; errorMessage = nil
         } catch { errorMessage = "分组未能保存，原目录已保留。请检查存储位置后重试。"; throw error }
@@ -55,6 +57,12 @@ import OfficeCore
         // Validate the original input as well, before trimming control characters.
         try GroupRules.validate(groups + [OfficeCore.WorkGroup(id: value.id, name: name, parentID: parentID)])
         try save(groups + [value]); return value.id
+    }
+    public func update(id: UUID, name: String, parentID: UUID?) throws {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { throw OfficeError.invalid("分组已不存在。") }
+        var next = groups; next[index].name = name; next[index].parentID = parentID
+        try GroupRules.validate(next)
+        next[index].name = name.trimmingCharacters(in: .whitespacesAndNewlines); try save(next)
     }
     public func rename(id: UUID, name: String) throws {
         guard let index = groups.firstIndex(where: { $0.id == id }) else { throw OfficeError.invalid("分组已不存在。") }

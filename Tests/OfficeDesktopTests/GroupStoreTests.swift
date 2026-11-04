@@ -26,6 +26,34 @@ import OfficeCore
         #expect(try store.normalized(child) == nil)
         #expect(GroupStore(url: url).groups == store.groups)
     }
+    @Test func invalidHierarchyAndCombinedEditAreAtomic() throws {
+        let url = try temporaryURL(); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let store = GroupStore(url: url)
+        let parent = try store.create(name: "A"), child = try store.create(name: "项目", parentID: parent)
+        let other = try store.create(name: "B")
+        let original = store.groups, bytes = try Data(contentsOf: url)
+        #expect(throws: (any Error).self) { try store.update(id: parent, name: "已改名", parentID: child) }
+        #expect(store.groups == original)
+        #expect(try Data(contentsOf: url) == bytes)
+        try store.update(id: child, name: "新项目", parentID: other)
+        #expect(GroupRules.path(child, groups: store.groups) == "B → 新项目")
+        let invalid = "{\"version\":1,\"groups\":[{\"id\":\"\(UUID())\",\"name\":\"孤儿\",\"parentID\":\"\(UUID())\"}]}"
+        try Data(invalid.utf8).write(to: url)
+        #expect(throws: (any Error).self) { try store.reload() }
+        #expect(!store.isLoaded)
+        #expect(throws: (any Error).self) { try store.delete(id: parent) }
+        #expect(try String(contentsOf: url, encoding: .utf8) == invalid)
+    }
+    @Test func externalChangeRequiresRetryInsteadOfOverwritingNewerGroups() throws {
+        let url = try temporaryURL(); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        let first = GroupStore(url: url); _ = try first.create(name: "A")
+        let second = GroupStore(url: url); _ = try second.create(name: "B")
+        let newest = try Data(contentsOf: url)
+        #expect(throws: (any Error).self) { try first.create(name: "过时操作") }
+        #expect(try Data(contentsOf: url) == newest)
+        #expect(first.groups == second.groups)
+        _ = try first.create(name: "重试成功")
+    }
     @Test func corruptedUnknownVersionAndWriteFailurePreserveData() throws {
         let url = try temporaryURL(); defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
         for original in [Data("broken".utf8), Data("{\"version\":99,\"groups\":[]}".utf8)] {

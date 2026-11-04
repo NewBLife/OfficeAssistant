@@ -4,6 +4,10 @@ import OfficeCore
 
 @MainActor public struct MeetingWorkspaceView: View {
     @Bindable var controller: MeetingSessionController
+    let groups: GroupStore?
+    let scope: GroupScope
+    let defaultGroupID: UUID?
+    @State private var meetingSearch = ""
     let settings: AISettingsStore
     let minutes: MinutesCoordinator?; let tasks: TaskStore?; let links: MeetingTaskLinkService?; let preferences: AppPreferences
     let focus: EvidenceReference?; let sourceRequestID: UUID?; let openTask: (TaskItem) -> Void; let openMeeting: (UUID, EvidenceReference?) -> Void
@@ -17,7 +21,8 @@ import OfficeCore
     @State private var importedURL: URL?
     @State private var resumeChoice = false
     @State private var error: String?
-    public init(controller: MeetingSessionController, settings: AISettingsStore, minutes: MinutesCoordinator? = nil, tasks: TaskStore? = nil, links: MeetingTaskLinkService? = nil, preferences: AppPreferences = AppPreferences(), focus: EvidenceReference? = nil, sourceRequestID: UUID? = nil, openTask: @escaping (TaskItem) -> Void = { _ in }, openMeeting: @escaping (UUID, EvidenceReference?) -> Void = { _, _ in }) {
+    public init(controller: MeetingSessionController, settings: AISettingsStore, minutes: MinutesCoordinator? = nil, tasks: TaskStore? = nil, links: MeetingTaskLinkService? = nil, preferences: AppPreferences = AppPreferences(), focus: EvidenceReference? = nil, sourceRequestID: UUID? = nil, openTask: @escaping (TaskItem) -> Void = { _ in }, openMeeting: @escaping (UUID, EvidenceReference?) -> Void = { _, _ in }, groups: GroupStore? = nil, scope: GroupScope = .all, defaultGroupID: UUID? = nil) {
+        self.groups = groups; self.scope = scope; self.defaultGroupID = defaultGroupID
         self.controller = controller; self.settings = settings; self.minutes = minutes; self.tasks = tasks; self.links = links; self.preferences = preferences
         self.focus = focus; self.sourceRequestID = sourceRequestID; self.openTask = openTask; self.openMeeting = openMeeting
     }
@@ -31,21 +36,28 @@ import OfficeCore
             }.padding(24)
             Divider()
             HSplitView {
-                List(controller.history) { item in
+                VStack(spacing: 0) {
+                    TextField("搜索会议标题", text: $meetingSearch).textFieldStyle(.roundedBorder).padding(10)
+                    Text("\(visibleHistory.count) 场会议").font(.caption).foregroundStyle(.secondary)
+                    List(visibleHistory) { item in
                     Button {
                         do { try controller.open(item) } catch { self.error = error.localizedDescription }
                     } label: {
-                        VStack(alignment: .leading, spacing: 5) { Text(item.title).font(.headline).lineLimit(2); Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption); Text(item.state.label).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                        VStack(alignment: .leading, spacing: 5) {
+                            if let groups { Text(groups.isLoaded ? GroupRules.path(item.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary) }
+                            Text(item.title).font(.headline).lineLimit(2); Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption); Text(item.state.label).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.borderless).disabled(controller.isActive)
                     .contextMenu {
+                        if let groups { GroupMoveMenu(groups: groups, currentID: item.groupID) { try controller.moveToGroup(id: item.id, groupID: $0) }.disabled(controller.isActive && controller.meeting?.id == item.id) }
                         Button("删除会议", role: .destructive) { deleteAudio = false; deleting = item }
                             .disabled(controller.isActive)
+                    }
                     }
                 }.frame(minWidth: 175, idealWidth: 210, maxWidth: 260)
                 detail.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
             }
         }.sheet(isPresented: $setupPresented) {
-            MeetingSetupView(configuration: settings.value, importing: importedURL != nil) { setup in
+            MeetingSetupView(configuration: settings.value, importing: importedURL != nil, groups: groups, defaultGroupID: defaultGroupID) { setup in
                 let url = importedURL
                 Task {
                     do { if let url { try await controller.importAudio(url: url, setup: setup) } else { try await controller.start(setup) } }
@@ -88,10 +100,23 @@ import OfficeCore
         }
         .alert("会议操作未完成", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("好") { error = nil } } message: { Text(error ?? "") }
         .onChange(of: controller.meeting?.id) { _, _ in tab = "转写" }
+        .onChange(of: scope) { _, _ in
+            if !controller.isActive, !controller.canProcessBuffered,
+               !visibleHistory.contains(where: { $0.id == controller.meeting?.id }), let first = visibleHistory.first {
+                do { try controller.open(first) } catch { self.error = error.localizedDescription }
+            }
+        }
         .onChange(of: sourceRequestID) { _, _ in tab = "转写" }
     }
+    private var visibleHistory: [MeetingSession] {
+        if let groups, !groups.isLoaded { return scope == .all ? controller.history.filter { meetingSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(meetingSearch) } : [] }
+        return GroupContentFilter.meetings(controller.history, scope: scope, groups: groups?.groups ?? [], search: meetingSearch)
+    }
+    private func inScope(_ meeting: MeetingSession) -> Bool {
+        scope == .all || GroupRules.matches(meeting.groupID, scope: scope, groups: groups?.groups ?? [])
+    }
     @ViewBuilder private var detail: some View {
-        if let meeting = controller.meeting {
+        if let meeting = controller.meeting, inScope(meeting) {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
@@ -99,6 +124,12 @@ import OfficeCore
                         Text(meeting.state.label).foregroundStyle(controller.isActive ? .red : .secondary)
                         Button(role: .destructive) { deleteAudio = false; deleting = meeting } label: { Label("删除会议", systemImage: "trash") }
                             .disabled(controller.isActive || exportingAudio)
+                    }
+                    if let groups {
+                        HStack {
+                            Text(groups.isLoaded ? GroupRules.path(meeting.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary)
+                            GroupMoveMenu(groups: groups, currentID: meeting.groupID) { try controller.moveToGroup(id: meeting.id, groupID: $0) }.disabled(controller.isActive)
+                        }
                     }
                     Text(meeting.configuration.shouldTranslate ? "\(meeting.configuration.speechProvider.label)识别 · \(meeting.configuration.translationProvider.label)翻译 · \(meeting.configuration.direction.label)" : "\(meeting.configuration.speechProvider.label)识别 · 仅转写 · \(meeting.configuration.effectiveRecognitionLanguage.label)").font(.caption).foregroundStyle(.secondary)
                     if controller.isActive {
@@ -166,9 +197,9 @@ import OfficeCore
                     }.frame(maxWidth: .infinity, maxHeight: .infinity).background(Color(nsColor: .windowBackgroundColor))
                 } else if let minutes {
                     if tab == "会议纪要" {
-                        MeetingMinutesView(meeting: meeting, coordinator: minutes, settings: settings, recording: controller.isActive, hasBuffered: controller.canProcessBuffered, imported: meeting.importIdentity != nil || controller.segments.contains { $0.id.source == .file }, tasks: tasks, links: links, preferences: preferences, openTask: openTask, openMeeting: openMeeting)
+                        MeetingMinutesView(meeting: meeting, coordinator: minutes, settings: settings, recording: controller.isActive, hasBuffered: controller.canProcessBuffered, imported: meeting.importIdentity != nil || controller.segments.contains { $0.id.source == .file }, tasks: tasks, links: links, preferences: preferences, openTask: openTask, openMeeting: openMeeting, groups: groups)
                     } else {
-                        ScrollView { MeetingActionsView(meeting: meeting, coordinator: minutes, tasks: tasks, links: links, preferences: preferences, showCandidates: false, openTask: openTask, openMeeting: openMeeting).padding(22) }
+                        ScrollView { MeetingActionsView(meeting: meeting, coordinator: minutes, tasks: tasks, links: links, preferences: preferences, showCandidates: false, openTask: openTask, openMeeting: openMeeting, groups: groups).padding(22) }
                     }
                 } else { ContentUnavailableView("纪要暂时不可用", systemImage: "doc.text", description: Text("请重启应用后重试，原记录不会被清空。")) }
             }

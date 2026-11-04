@@ -6,6 +6,7 @@ import OfficeCore
     let store: TaskStore
     let now: Date
     var openMeeting: ((UUID, EvidenceReference?) -> Void)? = nil
+    var groups: GroupStore? = nil
     let edit: (TaskItem) -> Void
     @State private var deleting: TaskItem?
     @State private var error: String?
@@ -28,6 +29,9 @@ import OfficeCore
                                 .strikethrough(item.status == .completed).foregroundStyle(item.status == .completed ? .secondary : .primary)
                                 .multilineTextAlignment(.leading).frame(maxWidth: .infinity, alignment: .leading)
                         }.buttonStyle(.plain).disabled(item.status == .completed)
+                        if let groups {
+                            Text(groups.isLoaded ? GroupRules.path(item.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary)
+                        }
                         if !item.notes.isEmpty { Text(item.notes).font(.callout).foregroundStyle(.secondary).lineLimit(2) }
                         ForEach((item.meetingLinks ?? []).reduce(into: [TaskMeetingLink]()) { values, link in if !values.contains(where: { $0.meetingID == link.meetingID }) { values.append(link) } }) { link in
                             Button { openMeeting?(link.meetingID, link.evidence.first) } label: { Label("来源会议：" + link.meetingTitleSnapshot, systemImage: "waveform") }
@@ -59,6 +63,7 @@ import OfficeCore
                                 perform { if item.status == .completed { try store.reopen(id: item.id) }
                                           else { try store.complete(id: item.id, at: Date()) } }
                             }
+                            if let groups { GroupMoveMenu(groups: groups, currentID: item.groupID) { try store.moveToGroup(id: item.id, groupID: $0) } }
                             Divider()
                             Button("删除", role: .destructive) { deleting = item }
                         } label: { Image(systemName: "ellipsis") }.menuStyle(.borderlessButton).frame(width: 26)
@@ -68,6 +73,7 @@ import OfficeCore
                     .overlay(RoundedRectangle(cornerRadius: 12).stroke(.quaternary, lineWidth: 1))
                     .contextMenu {
                         if item.status != .completed { Button("编辑") { edit(item) } }
+                        if let groups { GroupMoveMenu(groups: groups, currentID: item.groupID) { try store.moveToGroup(id: item.id, groupID: $0) } }
                         Button("删除", role: .destructive) { deleting = item }
                     }
             }
