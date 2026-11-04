@@ -72,8 +72,12 @@ import OfficeCore
                             Text("建议使用耳机，避免外放声音被麦克风重复录入。读取音源可能请求系统录制权限。")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                        Toggle("在本机保留原始音频", isOn: $retain)
                     }
+                }
+                Section("音频保存") {
+                    Toggle("在本机保留原始音频", isOn: $retain)
+                    Text("保留后可在会议页导出音频；未保留的录音无法事后恢复。")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
                 Section {
                     Text(config.shouldTranslate ? "音频发送到所选识别服务，原文发送到所选翻译服务。字幕记录保存在本机。请先保存相应凭证。" : "音频发送到所选识别服务，原文记录保存在本机。仅转写不调用翻译服务，只需配置识别服务凭证。")

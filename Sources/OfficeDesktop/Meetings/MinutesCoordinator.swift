@@ -85,6 +85,12 @@ import OfficeCore
         token = UUID(); operation?.cancel(); operation = nil; job.status = .cancelled; job.errorMessage = "已取消生成。"
         try? notes.saveJob(job); currentJob = job; changeCount += 1
     }
+    public func forget(meetingID: UUID) {
+        recordingStopped(meetingID: meetingID); cancel(meetingID: meetingID)
+        processed.removeValue(forKey: meetingID); lastIncremental.removeValue(forKey: meetingID)
+        if currentJob?.meetingID == meetingID { currentJob = nil }
+        changeCount += 1
+    }
     public func saveEdit(_ document: MinutesDocument) throws {
         var next = document; next.id = UUID(); next.revision = (try documents(meetingID: document.meetingID).map(\.revision).max() ?? 0) + 1
         next.createdAt = Date(); next.editedByUser = true

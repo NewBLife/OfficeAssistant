@@ -4,6 +4,7 @@ import OfficeCore
 
 @MainActor public protocol MeetingRepository {
     func list() throws -> [MeetingSession]
+    func delete(meetingID: UUID) throws
     func save(_ meeting: MeetingSession) throws
     func segments(meetingID: UUID) throws -> [TranscriptSegment]
     func upsert(_ segment: TranscriptSegment) throws
@@ -54,6 +55,15 @@ import OfficeCore
     public func save(_ meeting: MeetingSession) throws { try put(meeting, key: "m.\(meeting.id)") }
     public func segments(meetingID: UUID) throws -> [TranscriptSegment] {
         try records(prefix: "s.\(meetingID).").map { try JSONDecoder().decode(TranscriptSegment.self, from: $0.payload) }.sorted { $0.sourceStartSeconds < $1.sourceStartSeconds }
+    }
+    public func delete(meetingID: UUID) throws {
+        do {
+            let prefixes = ["s.", "n.", "a.", "j."].map { "\($0)\(meetingID)." }
+            var selected = try records(prefix: "m.\(meetingID)").filter { $0.key == "m.\(meetingID)" }
+            for prefix in prefixes { selected += try records(prefix: prefix) }
+            for record in selected { context.delete(record) }
+            try context.save()
+        } catch { context.rollback(); throw error }
     }
     public func upsert(_ segment: TranscriptSegment) throws { try put(segment, key: "s.\(segment.id.id)") }
 }

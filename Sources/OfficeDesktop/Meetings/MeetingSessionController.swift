@@ -75,6 +75,22 @@ public struct MeetingSetup {
         }
         meeting = item; segments = loaded; errorMessage = nil
     }
+    public func delete(_ id: UUID, includingAudio: Bool = false) throws {
+        guard !isActive else { throw OfficeError.invalid("请先暂停或停止记录，再删除会议。") }
+        guard let item = try repository.list().first(where: { $0.id == id }) else { throw OfficeError.invalid("会议已删除或不可用。") }
+        guard !item.remoteTasks.contains(where: \.needsStop) else { throw OfficeError.invalid("请先清理待关闭的听悟云端任务，再删除会议。") }
+        try repository.delete(meetingID: id)
+        if meeting?.id == id {
+            cancelTranslations(); epoch = UUID(); discardBuffered()
+            meeting = nil; segments = []; savedSetup = nil; savedSetupMeetingID = nil; importURL = nil
+            recognizedThrough = [:]; lastPartialUpdate = [:]; levels = [:]; errorMessage = nil
+        }
+        reloadHistory()
+        if includingAudio {
+            do { try MeetingAudioFiles().remove(item.audioFiles) }
+            catch { throw OfficeError.invalid("会议已删除，但部分本机录音未能删除，可通过本机录音文件夹手动清理。") }
+        }
+    }
     private func persist() throws {
         if let meeting { try repository.save(meeting) }; history = try repository.list(); onChange?()
     }
@@ -369,6 +385,12 @@ public struct MeetingSetup {
         // Check the local file before creating a new meeting or sending anything.
         let identity = try AudioImportFingerprint.read(url)
         try prepare(setup, file: true); importURL = url; meeting?.importIdentity = identity; try persist()
+        if setup.retainAudio, let id = meeting?.id {
+            do {
+                let name = try MeetingAudioFiles().retainImport(url, meetingID: id)
+                meeting?.audioFiles.append(name); try persist()
+            } catch { meeting?.state = .failed; try? persist(); throw error }
+        }
         try await continueImport(url: url)
     }
     public func restoreImport(url: URL) async throws {

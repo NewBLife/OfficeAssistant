@@ -7,6 +7,9 @@ import OfficeCore
     let settings: AISettingsStore
     let minutes: MinutesCoordinator?; let tasks: TaskStore?; let links: MeetingTaskLinkService?; let preferences: AppPreferences
     let focus: EvidenceReference?; let sourceRequestID: UUID?; let openTask: (TaskItem) -> Void; let openMeeting: (UUID, EvidenceReference?) -> Void
+    @State private var deleting: MeetingSession?
+    @State private var deleteAudio = false
+    @State private var exportingAudio = false
     @State private var tab = "转写"
     @State private var setupPresented = false
     @State private var filePicker = false
@@ -34,6 +37,10 @@ import OfficeCore
                     } label: {
                         VStack(alignment: .leading, spacing: 5) { Text(item.title).font(.headline).lineLimit(2); Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption); Text(item.state.label).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.borderless).disabled(controller.isActive)
+                    .contextMenu {
+                        Button("删除会议", role: .destructive) { deleteAudio = false; deleting = item }
+                            .disabled(controller.isActive)
+                    }
                 }.frame(minWidth: 175, idealWidth: 210, maxWidth: 260)
                 detail.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
             }
@@ -45,6 +52,24 @@ import OfficeCore
                     catch { self.error = ProviderNetwork.safeError(error) }
                 }
             }
+        }
+        .sheet(item: $deleting) { item in
+            VStack(alignment: .leading, spacing: 18) {
+                Text("删除会议？").font(.title2.bold())
+                Text("“\(item.title)”的转写、纪要及候选行动项将被删除，已加入的待办会保留。此操作无法撤销。")
+                if !item.audioFiles.isEmpty { Toggle("同时删除本机保留的音频", isOn: $deleteAudio) }
+                HStack {
+                    Spacer()
+                    Button("取消") { deleting = nil }.keyboardShortcut(.cancelAction)
+                    Button("删除", role: .destructive) {
+                        do {
+                            minutes?.forget(meetingID: item.id)
+                            try controller.delete(item.id, includingAudio: deleteAudio)
+                        } catch { self.error = error.localizedDescription }
+                        deleting = nil
+                    }.disabled(controller.isActive || exportingAudio)
+                }
+            }.padding(24).frame(width: 420)
         }
         .fileImporter(isPresented: $filePicker, allowedContentTypes: [.audio]) { result in
             do {
@@ -69,7 +94,12 @@ import OfficeCore
         if let meeting = controller.meeting {
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
-                    HStack { Text(meeting.title).font(.title2.bold()); Spacer(); Text(meeting.state.label).foregroundStyle(controller.isActive ? .red : .secondary) }
+                    HStack {
+                        Text(meeting.title).font(.title2.bold()); Spacer()
+                        Text(meeting.state.label).foregroundStyle(controller.isActive ? .red : .secondary)
+                        Button(role: .destructive) { deleteAudio = false; deleting = meeting } label: { Label("删除会议", systemImage: "trash") }
+                            .disabled(controller.isActive || exportingAudio)
+                    }
                     Text(meeting.configuration.shouldTranslate ? "\(meeting.configuration.speechProvider.label)识别 · \(meeting.configuration.translationProvider.label)翻译 · \(meeting.configuration.direction.label)" : "\(meeting.configuration.speechProvider.label)识别 · 仅转写 · \(meeting.configuration.effectiveRecognitionLanguage.label)").font(.caption).foregroundStyle(.secondary)
                     if controller.isActive {
                         TimelineView(.periodic(from: Date(), by: 1)) { context in
@@ -102,7 +132,23 @@ import OfficeCore
                     }
                     if let message = controller.errorMessage { Text(message).font(.callout).foregroundStyle(.orange).textSelection(.enabled) }
                     if !meeting.audioFiles.isEmpty {
-                        Button("查看本机录音") { if let folder = try? AudioArchive.folder() { NSWorkspace.shared.open(folder) } }
+                        HStack {
+                            Button(exportingAudio ? "正在导出…" : "导出音频") {
+                                exportingAudio = true
+                                Task {
+                                    defer { exportingAudio = false }
+                                    do { try await MeetingAudioExporter.export(meeting) }
+                                    catch { self.error = error.localizedDescription }
+                                }
+                            }.disabled(controller.isActive || exportingAudio)
+                            Button("查看本机录音") {
+                                do { NSWorkspace.shared.open(try AudioArchive.folder()) }
+                                catch { self.error = error.localizedDescription }
+                            }
+                        }
+                    } else {
+                        Text("未保留原始音频，无法导出。新建或导入时可勾选“在本机保留原始音频”。")
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                     if controller.hasUnclosedRemoteTasks {
                         Button("清理待关闭的听悟云端任务") { Task { await controller.cleanupRemoteTasks() } }.disabled(controller.isActive)
