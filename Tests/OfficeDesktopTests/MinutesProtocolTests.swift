@@ -59,6 +59,22 @@ final class FixtureMinutesTransport: ProviderTransport {
         do { _ = try await MinutesGenerator(credentials: TestCredentials(), transport: transport).generate(snapshot: snapshot(), options: MinutesOptions()); Issue.record("不完整结果不应成功") } catch {}
         #expect(transport.requests.count == 1)
     }
+    @Test func testEvidenceMismatchRetriesWithCorrectionAndKeepsStrictValidation() async throws {
+        let snap = snapshot()
+        var responses = 0
+        let transport = FixtureMinutesTransport { _ in
+            responses += 1
+            let quote = responses == 1 ? "错误引文" : snap.segments[0].text
+            let root: [String: Any] = ["overviewZH": "记录", "overviewJA": NSNull(), "topics": [], "decisions": [["textZH": "报价", "textJA": NSNull(), "evidence": [["segmentKey": "file:0", "quote": quote]]]], "openQuestions": [], "actions": []]
+            return try JSONSerialization.data(withJSONObject: ["choices": [["finish_reason": "stop", "message": ["content": String(decoding: try JSONSerialization.data(withJSONObject: root), as: UTF8.self)]]]])
+        }
+        let result = try await MinutesGenerator(credentials: TestCredentials(), transport: transport).generate(snapshot: snap, options: MinutesOptions())
+        #expect(transport.requests.count == 2)
+        #expect(result.document.decisions.first?.evidence.first?.quote == snap.segments[0].text)
+        let retryBody = try #require(try JSONSerialization.jsonObject(with: transport.requests[1].httpBody!) as? [String: Any])
+        let messages = try #require(retryBody["messages"] as? [[String: String]])
+        #expect(messages[0]["content"]?.contains("上次输出的原文引文校验失败") == true)
+    }
 }
 
 extension MinutesProtocolTests {

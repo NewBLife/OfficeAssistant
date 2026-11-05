@@ -18,18 +18,25 @@ private struct EvidencePayload: Decodable { var segmentKey: String; var quote: S
 private struct PointPayload: Decodable { var textZH: String; var textJA: String?; var evidence: [EvidencePayload] }
 private struct ActionPayload: Decodable { var titleZH: String; var titleJA: String?; var owner: String?; var dueText: String?; var intent: String; var evidence: [EvidencePayload] }
 private struct MinutesPayload: Decodable { var overviewZH: String; var overviewJA: String?; var topics: [PointPayload]; var decisions: [PointPayload]; var openQuestions: [PointPayload]; var actions: [ActionPayload] }
+private struct MinutesEvidenceMismatch: LocalizedError {
+    var errorDescription: String? { "纪要引用与本次原文不符，旧记录已保留。" }
+}
 
 @MainActor public final class MinutesGenerator: MinutesGenerating {
     private let credentials: any CredentialStore; private let transport: any ProviderTransport
     public init(credentials: any CredentialStore, transport: any ProviderTransport = URLSessionProviderTransport()) { self.credentials = credentials; self.transport = transport }
     public func request(snapshot: MinutesSnapshot, options: MinutesOptions) throws -> URLRequest {
+        try request(snapshot: snapshot, options: options, correctingEvidence: false)
+    }
+    private func request(snapshot: MinutesSnapshot, options: MinutesOptions, correctingEvidence: Bool) throws -> URLRequest {
         try options.validate()
         guard let base = options.provider.baseURL else { throw OfficeError.invalid("纪要服务不支持文字生成。") }
         let payload: [String: Any] = ["title": String(snapshot.meeting.title.prefix(500)), "participantsNote": String(snapshot.meeting.participantsNote.prefix(2000)), "outputLanguage": options.language.rawValue,
             "referenceDate": options.referenceDate.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(), "timeZoneID": options.timeZoneID,
             "segments": snapshot.segments.map { ["segmentKey": "\($0.id.source.rawValue):\($0.id.sequence)", "text": $0.text] },
             "knownActions": snapshot.knownActions.filter { $0.meetingID == snapshot.meeting.id }.prefix(100).map { ["title": $0.titleZH, "reviewState": $0.reviewState.rawValue] }]
-        var body: [String: Any] = ["model": options.model, "stream": false, "messages": [["role": "system", "content": MinutesPrompt.system], ["role": "user", "content": String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)]]]
+        let systemPrompt = MinutesPrompt.system + (correctingEvidence ? "\n\n上次输出的原文引文校验失败。请重新检查每个 segmentKey，并仅逐字复制对应原文中的连续片段作为 quote；不要改写、补标点或引用不存在的内容。" : "")
+        var body: [String: Any] = ["model": options.model, "stream": false, "messages": [["role": "system", "content": systemPrompt], ["role": "user", "content": String(decoding: try JSONSerialization.data(withJSONObject: payload), as: UTF8.self)]]]
         if options.provider == .openai {
             body["max_completion_tokens"] = 6000
             body["response_format"] = ["type": "json_schema", "json_schema": ["name": "meeting_minutes", "strict": true, "schema": MinutesPrompt.schema]]
@@ -62,16 +69,26 @@ private struct MinutesPayload: Decodable { var overviewZH: String; var overviewJ
         let deadline = Date().addingTimeInterval(600)
         var results: [MinutesGenerationResult] = []
         for chunk in chunks {
-            try Task.checkCancellation(); guard Date() < deadline else { throw OfficeError.invalid("纪要处理超时，请稍后重试。") }
-            let raw = try await transport.data(for: request(snapshot: chunk, options: options)); try Task.checkCancellation()
-            guard Date() < deadline else { throw OfficeError.invalid("纪要处理超时，旧版本已保留。") }
-            guard raw.count <= 2 * 1024 * 1024, let root = try JSONSerialization.jsonObject(with: raw) as? [String: Any],
-                  let choice = (root["choices"] as? [[String: Any]])?.first, choice["finish_reason"] as? String == "stop",
-                  let message = choice["message"] as? [String: Any], message["refusal"] == nil || message["refusal"] is NSNull,
-                  let content = message["content"] as? String, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw OfficeError.invalid("纪要未完整返回或被拒绝，旧记录已保留。") }
-            // Validate against the exact submitted chunk, then map quote positions to the full original.
-            _ = try Self.decodeContent(Data(content.utf8), snapshot: chunk, options: options)
-            results.append(try Self.decodeContent(Data(content.utf8), snapshot: snapshot, options: options))
+            var chunkResult: MinutesGenerationResult?
+            for attempt in 0...1 {
+                try Task.checkCancellation(); guard Date() < deadline else { throw OfficeError.invalid("纪要处理超时，请稍后重试。") }
+                let raw = try await transport.data(for: request(snapshot: chunk, options: options, correctingEvidence: attempt == 1)); try Task.checkCancellation()
+                guard Date() < deadline else { throw OfficeError.invalid("纪要处理超时，旧版本已保留。") }
+                guard raw.count <= 2 * 1024 * 1024, let root = try JSONSerialization.jsonObject(with: raw) as? [String: Any],
+                      let choice = (root["choices"] as? [[String: Any]])?.first, choice["finish_reason"] as? String == "stop",
+                      let message = choice["message"] as? [String: Any], message["refusal"] == nil || message["refusal"] is NSNull,
+                      let content = message["content"] as? String, !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { throw OfficeError.invalid("纪要未完整返回或被拒绝，旧记录已保留。") }
+                do {
+                    // Validate against the exact submitted chunk, then map quote positions to the full original.
+                    _ = try Self.decodeContent(Data(content.utf8), snapshot: chunk, options: options)
+                    chunkResult = try Self.decodeContent(Data(content.utf8), snapshot: snapshot, options: options)
+                    break
+                } catch is MinutesEvidenceMismatch {
+                    if attempt == 1 { throw MinutesEvidenceMismatch() }
+                }
+            }
+            guard let chunkResult else { throw OfficeError.invalid("纪要结果为空。") }
+            results.append(chunkResult)
         }
         guard var result = results.first else { throw OfficeError.invalid("纪要结果为空。") }
         for next in results.dropFirst() {
@@ -104,7 +121,7 @@ private struct MinutesPayload: Decodable { var overviewZH: String; var overviewJ
         func refs(_ values: [EvidencePayload]) throws -> [EvidenceReference] {
             guard !values.isEmpty, values.count <= 50 else { throw OfficeError.invalid("纪要缺少有效原文依据。") }
             return try values.map { value in
-                guard !value.quote.isEmpty, value.quote.count <= 12000, let segment = snapshot.segments.first(where: { "\($0.id.source.rawValue):\($0.id.sequence)" == value.segmentKey && $0.id.meetingID == snapshot.meeting.id && $0.finalText != nil && $0.text.contains(value.quote) }) else { throw OfficeError.invalid("纪要引用与本次原文不符，旧记录已保留。") }
+                guard !value.quote.isEmpty, value.quote.count <= 12000, let segment = snapshot.segments.first(where: { "\($0.id.source.rawValue):\($0.id.sequence)" == value.segmentKey && $0.id.meetingID == snapshot.meeting.id && $0.finalText != nil && $0.text.contains(value.quote) }) else { throw MinutesEvidenceMismatch() }
                 let range = (segment.text as NSString).range(of: value.quote)
                 return EvidenceReference(segmentID: segment.id, revision: segment.revision, quote: value.quote, startUTF16: range.location, lengthUTF16: range.length, sourceStartSeconds: segment.sourceStartSeconds)
             }
