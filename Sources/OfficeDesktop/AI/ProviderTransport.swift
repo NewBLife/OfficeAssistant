@@ -36,8 +36,9 @@ public protocol ProviderTransport {
 }
 public final class URLSessionProviderTransport: ProviderTransport {
     private let session: URLSession
-    public init() {
-        let config = URLSessionConfiguration.ephemeral; config.timeoutIntervalForRequest = 30; config.timeoutIntervalForResource = 120
+    public init(requestTimeout: TimeInterval = 30, resourceTimeout: TimeInterval = 120) {
+        let config = URLSessionConfiguration.ephemeral
+        config.timeoutIntervalForRequest = requestTimeout; config.timeoutIntervalForResource = resourceTimeout
         session = URLSession(configuration: config, delegate: RejectRedirects(), delegateQueue: nil)
     }
     private func validate(_ request: URLRequest) throws {

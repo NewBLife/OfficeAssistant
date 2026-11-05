@@ -11,6 +11,7 @@ public enum MinutesPrompt {
     referenceDate 为空时，不猜录音实际日期。不得按今天或重试日计算明天。时间解析交给本地程序，只给 dueText。
     返回 overviewZH, overviewJA, topics, decisions, openQuestions, actions。要点字段 textZH,textJA,evidence。行动项字段 titleZH,titleJA,owner,dueText,intent,evidence。
     evidence 是 [{"segmentKey":"file:0","quote":"逐字引文"}]。不包含明确内容的数组为空。不要返回 Markdown 代码围栏。
+    每条 quote 应为同一个 segmentKey 中足以支持要点的短原文，优先使用 10～80 字的连续片段。不要摘抄整段，不加省略号，不拼接跨片段原文；跨片段事项分别提供多条 evidence。不得把原文翻译后作为 quote。
     """
     public static var schema: [String: Any] {
         let string: [String: Any] = ["type": "string"]

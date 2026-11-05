@@ -6,6 +6,8 @@ import OfficeCore
     public private(set) var changeCount = 0
     public private(set) var currentJob: MinutesJobRecord?
     public var errorMessage: String?
+    public private(set) var completedChunks = 0
+    public private(set) var totalChunks = 0
     public var isRunning: Bool { currentJob?.status == .running }
     @ObservationIgnored private let meetings: any MeetingRepository
     @ObservationIgnored private let notes: any MinutesRepository
@@ -48,11 +50,23 @@ import OfficeCore
         var input = incrementalOnly ? MinutesSnapshot(meeting: full.meeting, segments: full.segments.filter { !(processed[meetingID] ?? []).contains(segmentKey($0)) }) : full
         input.knownActions = try notes.candidates(meetingID: meetingID)
         guard !input.segments.isEmpty else { throw OfficeError.invalid("没有已定稿原文，暂时无法生成纪要。") }
+        let chunks = try MinutesProcessingPolicy.chunks(input)
+        let timeBudget = MinutesProcessingPolicy.jobTimeout(chunkCount: chunks.count)
         var job = MinutesJobRecord(meetingID: meetingID, options: options, sourceFingerprint: input.fingerprint)
         try notes.saveJob(job)
         token = UUID(); let epoch = token; currentJob = job; errorMessage = nil; incrementalJob = incrementalOnly
-        let task = Task { @MainActor in try await self.generator.generate(snapshot: input, options: options) }; operation = task
-        let timeout = Task { try? await Task.sleep(for: .seconds(600)); if !Task.isCancelled { task.cancel() } }
+        completedChunks = 0; totalChunks = chunks.count
+        let task = Task { @MainActor in
+            try await self.generator.generate(snapshot: input, options: options) { completed, total in
+                guard self.token == epoch else { return }
+                self.completedChunks = completed; self.totalChunks = total
+            }
+        }; operation = task
+        var timedOut = false
+        let timeout = Task {
+            try? await Task.sleep(for: .seconds(timeBudget))
+            if !Task.isCancelled { timedOut = true; task.cancel() }
+        }
         defer { timeout.cancel(); if epoch == token { operation = nil; incrementalJob = false } }
         do {
             var result = try await task.value; try Task.checkCancellation()
@@ -78,11 +92,12 @@ import OfficeCore
             }
             job.status = .completed; try notes.saveJob(job); currentJob = job; changeCount += 1
         } catch {
+            let failure: Error = timedOut ? OfficeError.invalid("纪要生成超时，原文和旧纪要已保留，请稍后重试。") : error
             if epoch == token {
-                if job.status != .stale { job.status = error is CancellationError ? .cancelled : .failed }
-                job.errorMessage = ProviderNetwork.safeError(error); try? notes.saveJob(job); currentJob = job; errorMessage = job.errorMessage; changeCount += 1
+                if job.status != .stale { job.status = failure is CancellationError ? .cancelled : .failed }
+                job.errorMessage = ProviderNetwork.safeError(failure); try? notes.saveJob(job); currentJob = job; errorMessage = job.errorMessage; changeCount += 1
             }
-            throw error
+            throw failure
         }
     }
     public func cancel(meetingID: UUID) {

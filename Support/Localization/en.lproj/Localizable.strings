@@ -393,3 +393,8 @@
 "微软 Azure Speech" = "Microsoft Azure Speech";
 "阿里通义听悟" = "Alibaba Tingwu";
 "菜单栏" = "Menu Bar";
+"已完成 %lld/%lld 段" = "%lld/%lld batches completed";
+"支持 2 小时会议；超过 2 小时自动分段处理并合并纪要。长会议可能需要数分钟。" = "Supports two-hour meetings. Longer meetings are split automatically and the minutes are combined. Long meetings may take several minutes.";
+"导出转写" = "Export Transcript";
+"转写导出未完成" = "Transcript export incomplete";
+"导出已定稿原文与现有译文" = "Export finalized text and available translations";

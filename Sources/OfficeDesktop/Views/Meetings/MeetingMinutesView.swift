@@ -21,13 +21,18 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                         else { incrementalChoice = true; sheet = .generate }
                     }
                 }
-                if coordinator.isRunning && coordinator.currentJob?.meetingID == meeting.id {
-                    ProgressView().controlSize(.small); Button("取消生成") { coordinator.cancel(meetingID: meeting.id) }
-                }
                 Spacer()
                 Button("编辑纪要") { sheet = .edit }.disabled(document == nil)
                 Button("导出纪要") { sheet = .export }.disabled(document == nil)
             }.padding(16)
+            if coordinator.isRunning && coordinator.currentJob?.meetingID == meeting.id {
+                HStack {
+                    ProgressView().controlSize(.small)
+                    Text("已完成 \(coordinator.completedChunks)/\(coordinator.totalChunks) 段").font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                    Button("取消生成") { coordinator.cancel(meetingID: meeting.id) }
+                }.padding(.horizontal, 16).padding(.bottom, 10)
+            }
             if !documents.isEmpty {
                 Picker("历史版本", selection: $selected) {
                     ForEach(documents) { item in Text("版本 \(item.revision) · \(item.createdAt.formatted(date: .abbreviated, time: .shortened))\(item.editedByUser ? " · 已校对" : "")").tag(Optional(item.id)) }
@@ -35,7 +40,7 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
             }
             if recording { Text("完整纪要请在暂停或结束记录后生成；会议中提取只产生待审阅候选。").font(.caption).foregroundStyle(.secondary).padding(.horizontal) }
             if hasBuffered { Text("仍有暂存音频，纪要仅涵盖已经保存的定稿原文。").font(.caption).foregroundStyle(.orange).padding(.horizontal) }
-            if let error { Text(error).foregroundStyle(.orange).padding(.horizontal).textSelection(.enabled) }
+            if let error, coordinator.currentJob?.meetingID != meeting.id || error != coordinator.errorMessage { Text(error).foregroundStyle(.orange).padding(.horizontal).textSelection(.enabled) }
             if coordinator.currentJob?.meetingID == meeting.id, let message = coordinator.errorMessage { Text(message).font(.callout).foregroundStyle(.orange).padding(.horizontal) }
             Divider()
             ScrollView {
@@ -56,7 +61,10 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                 case .generate:
                     MinutesOptionsView(meeting: meeting, settings: settings, timeZoneID: preferences.timeZoneID, imported: imported, incremental: incrementalChoice) { options in
                         if incrementalChoice { coordinator.setIncrementalExtraction(true, meetingID: meeting.id, options: options) }
-                        else { Task { do { try await coordinator.generate(meetingID: meeting.id, options: options) } catch { self.error = ProviderNetwork.safeError(error) } } }
+                        else {
+                            error = nil
+                            Task { do { try await coordinator.generate(meetingID: meeting.id, options: options) } catch { self.error = ProviderNetwork.safeError(error) } }
+                        }
                     }
                 case .edit:
                     if let document { MinutesEditor(document: document) { try coordinator.saveEdit($0) } }
@@ -112,6 +120,7 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                 TextField("会议时区", text: $options.timeZoneID)
                 Text("导入时间不等于录音实际日期。日期未知时，“明天/下周”等时间保留为待确认，不自动设置提醒。").font(.caption).foregroundStyle(.secondary)
                 Text("本次原文和会议备注将发送至所选纪要服务；不发送其他会议或待办库。候选需确认后才加入待办。").font(.callout)
+                Text("支持 2 小时会议；超过 2 小时自动分段处理并合并纪要。长会议可能需要数分钟。").font(.caption).foregroundStyle(.secondary)
             }.formStyle(.grouped)
             HStack { Button("取消") { dismiss() }; Spacer(); Button(incremental ? "开启提取" : "开始生成") {
                 options.referenceDate = knownDate ? reference : nil; submit(options); dismiss()

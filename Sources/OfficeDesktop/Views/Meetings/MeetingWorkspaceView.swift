@@ -223,6 +223,12 @@ import OfficeCore
                 }.padding(22)
                 Divider()
                 if tab == "转写" {
+                    HStack {
+                        Text("导出已定稿原文与现有译文").font(.caption).foregroundStyle(.secondary)
+                        Spacer()
+                        TranscriptExportButton(meeting: meeting, segments: controller.segments, timeZoneID: preferences.timeZoneID)
+                    }.padding(.horizontal, 20).padding(.vertical, 10)
+                    Divider()
                     ScrollViewReader { proxy in
                         ScrollView {
                             if controller.segments.isEmpty { ContentUnavailableView("等待会议内容", systemImage: "waveform", description: Text(meeting.configuration.shouldTranslate ? "开始记录后，这里会逐步显示原文与译文。" : "开始记录后，这里会逐步显示转写原文。")) }
