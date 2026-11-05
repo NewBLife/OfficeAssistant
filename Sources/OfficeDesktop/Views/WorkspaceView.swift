@@ -55,11 +55,15 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     }
     private var sidebar: some View {
         List {
-            Section("待办") {
+            Section {
                 ForEach([WorkspaceSection.today, .all, .completed]) { entry in navigationRow(entry) }
+            } header: {
+                Text(LocalizedStringKey("待办"))
             }
-            Section("工作空间") {
+            Section {
                 ForEach([WorkspaceSection.meetings, .ai, .settings]) { entry in navigationRow(entry) }
+            } header: {
+                Text(LocalizedStringKey("工作空间"))
             }
             GroupSidebarView(groups: model.groups, selection: $groupScope, active: section == .groups) { section = .groups }
         }.listStyle(.sidebar)
@@ -67,7 +71,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     private func navigationRow(_ entry: WorkspaceSection) -> some View {
         Button { section = entry } label: {
             HStack {
-                Label(entry.title, systemImage: entry.icon); Spacer()
+                Label(LocalizedStringKey(entry.title), systemImage: entry.icon); Spacer()
                 if entry == .today { Text("\(model.todayCount)").foregroundStyle(.secondary).monospacedDigit() }
             }.padding(.vertical, 5).padding(.horizontal, 3)
                 .background(section == entry ? Color.accentColor.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
