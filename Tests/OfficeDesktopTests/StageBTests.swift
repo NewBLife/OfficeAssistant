@@ -117,6 +117,44 @@ struct PCMConverterTests {
         for try await frame in AudioFileReader.frames(url: url, startFrame: 24000) { if start == nil { start = frame.startSeconds }; total += frame.samples.count }
         #expect(start == 1); #expect(abs(total - 48000) <= 2)
     }
+    @Test(arguments: [1, 2]) func testM4AImportAndResume(channels: Int) async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            let file = try AVAudioFile(forWriting: url, settings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 44100,
+                AVNumberOfChannelsKey: channels, AVEncoderBitRateKey: 128000
+            ])
+            let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 88200))
+            buffer.frameLength = buffer.frameCapacity
+            for channel in 0..<channels {
+                let samples = try #require(buffer.floatChannelData?[channel])
+                for index in 0..<Int(buffer.frameLength) { samples[index] = Float(sin(Double(index) * 440 * 2 * .pi / 44100)) * 0.2 }
+            }
+            try file.write(from: buffer)
+        }
+        try AudioFileReader.validate(url: url)
+        for offset: Int64 in [0, 24000] {
+            var total = 0
+            var first: Double?
+            for try await frame in AudioFileReader.frames(url: url, startFrame: offset) {
+                if first == nil { first = frame.startSeconds }
+                total += frame.samples.count
+            }
+            #expect(first == Double(offset) / 24000)
+            #expect(abs(total - Int(48000 - offset) * 2) < 256)
+        }
+    }
+    @Test func testTruncatedM4AReportsIncompleteFile() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".m4a")
+        defer { try? FileManager.default.removeItem(at: url) }
+        // A valid ftyp box followed by an mdat box whose payload was cut short.
+        try Data([0, 0, 0, 12] + Array("ftypM4A ".utf8) + [0, 0, 16, 0] + Array("mdat".utf8) + [0, 0]).write(to: url)
+        var message = ""
+        do { for try await _ in AudioFileReader.frames(url: url) { Issue.record("Truncated M4A yielded audio") } }
+        catch { message = error.localizedDescription }
+        #expect(message.contains("不完整"))
+    }
     @Test func testInvalidFileFailsBeforeYield() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try Data("not an audio file".utf8).write(to: url); defer { try? FileManager.default.removeItem(at: url) }

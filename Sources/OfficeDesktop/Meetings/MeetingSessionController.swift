@@ -407,6 +407,7 @@ public struct MeetingSetup {
     }
     public func importAudio(url: URL, setup: MeetingSetup) async throws {
         // Check the local file before creating a new meeting or sending anything.
+        try AudioFileReader.validate(url: url)
         let identity = try AudioImportFingerprint.read(url)
         try prepare(setup, file: true); importURL = url; meeting?.importIdentity = identity; try persist()
         if setup.retainAudio, let id = meeting?.id {
@@ -425,6 +426,7 @@ public struct MeetingSetup {
     }
     private func continueImport(url: URL) async throws {
         guard let configuration = meeting?.configuration, let identity = meeting?.importIdentity else { throw OfficeError.invalid("缺少原文件校验信息，请重新导入。") }
+        try AudioFileReader.validate(url: url)
         guard try AudioImportFingerprint.read(url) == identity else { throw OfficeError.invalid("原音频文件已变化，已停止续传。请选择原文件恢复。") }
         try preflight(configuration, file: true)
         starting = true; epoch = UUID(); offline = false; let token = epoch

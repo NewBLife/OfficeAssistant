@@ -29,11 +29,16 @@ import OfficeCore
     }
     public var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("会议记录").font(.title.bold()); Spacer()
-                Button("导入音频") { pickingRecovery = false; filePicker = true }.disabled(controller.isActive || controller.canProcessBuffered)
-                Button { importedURL = nil; setupPresented = true } label: { Label("新建会议", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).disabled(controller.isActive || controller.canProcessBuffered)
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    Text("会议记录").font(.title.bold()).fixedSize()
+                    Spacer(minLength: 12)
+                    meetingCreationActions
+                }
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("会议记录").font(.title.bold())
+                    meetingCreationActions
+                }.frame(maxWidth: .infinity, alignment: .leading)
             }.padding(24)
             Divider()
             HSplitView {
@@ -113,6 +118,13 @@ import OfficeCore
         }
         .onChange(of: sourceRequestID) { _, _ in tab = "转写" }
     }
+    private var meetingCreationActions: some View {
+        HStack {
+            Button("导入音频") { pickingRecovery = false; filePicker = true }
+            Button { importedURL = nil; setupPresented = true } label: { Label("新建会议", systemImage: "plus") }
+                .buttonStyle(.borderedProminent)
+        }.fixedSize().disabled(controller.isActive || controller.canProcessBuffered)
+    }
     private var visibleHistory: [MeetingSession] {
         if let groups, !groups.isLoaded { return scope == .all ? controller.history.filter { meetingSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(meetingSearch) } : [] }
         return GroupContentFilter.meetings(controller.history, scope: scope, groups: groups?.groups ?? [], search: meetingSearch)
@@ -125,17 +137,18 @@ import OfficeCore
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text(meeting.title).font(.title2.bold())
+                        Text(meeting.title).font(.title2.bold()).lineLimit(2)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         Button { renaming = meeting } label: { Image(systemName: "pencil") }
                             .buttonStyle(.borderless).help("修改会议名称").accessibilityLabel("修改会议名称")
                         Spacer()
-                        Text(LocalizedStringKey(meeting.state.label)).foregroundStyle(controller.isActive ? .red : .secondary)
+                        Text(LocalizedStringKey(meeting.state.label)).foregroundStyle(controller.isActive ? .red : .secondary).fixedSize()
                         Button(role: .destructive) { deleteAudio = false; deleting = meeting } label: { Label("删除会议", systemImage: "trash") }
-                            .disabled(controller.isActive || exportingAudio)
+                            .disabled(controller.isActive || exportingAudio).fixedSize()
                     }
                     if let groups {
                         HStack {
-                            Text(groups.isLoaded ? GroupRules.path(meeting.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary)
+                            Text(groups.isLoaded ? GroupRules.path(meeting.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary).lineLimit(1)
                             GroupMoveMenu(groups: groups, currentID: meeting.groupID) { try controller.moveToGroup(id: meeting.id, groupID: $0) }.disabled(controller.isActive)
                         }
                     }
