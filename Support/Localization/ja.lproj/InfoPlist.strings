@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Office Assistant";
+"NSMicrophoneUsageDescription" = "Office Assistant は、会議の録音と音声認識・翻訳字幕の表示にマイクを使用します。";
+"NSAudioCaptureUsageDescription" = "Office Assistant は、選択した会議アプリの音声を取得してリアルタイムの二言語字幕を表示します。";

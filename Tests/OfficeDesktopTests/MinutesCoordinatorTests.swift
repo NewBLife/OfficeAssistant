@@ -41,6 +41,17 @@ import OfficeCore
         #expect(try repo.documents(meetingID: meeting.id).isEmpty)
         #expect(try repo.jobs(meetingID: meeting.id).first?.status == .stale)
     }
+    @Test func testRenamingMeetingDoesNotMarkMinutesStaleButTranscriptEditsDo() async throws {
+        let (repo, meeting, segment) = try data(); let service = MinutesCoordinator(meetings: repo, notes: repo, generator: FakeMinutesGenerator())
+        try await service.generate(meetingID: meeting.id, options: MinutesOptions())
+        let document = try #require(repo.documents(meetingID: meeting.id).first)
+        let controller = MeetingSessionController(repository: repo, credentials: TestCredentials())
+        try controller.open(meeting)
+        try controller.rename(meeting.id, title: "更新后的会议名称")
+        #expect(!service.isStale(document))
+        var edited = segment; edited.revision += 1; edited.finalText = "修改后的原文"; try repo.upsert(edited)
+        #expect(service.isStale(document))
+    }
 }
 
 extension MinutesCoordinatorTests {

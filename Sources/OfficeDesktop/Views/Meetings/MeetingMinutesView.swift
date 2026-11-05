@@ -42,7 +42,7 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                 VStack(alignment: .leading, spacing: 20) {
                     if let doc = document {
                         if coordinator.isStale(doc) { Label("原文已更新，本版本需要重新核对。", systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
-                        Text(doc.meetingTitle).font(.title2.bold())
+                        Text(meeting.title).font(.title2.bold())
                         Text(doc.overviewZH).textSelection(.enabled)
                         if let ja = doc.overviewJA { Text(ja).foregroundStyle(.secondary).textSelection(.enabled) }
                         pointSection("议题摘要", doc.topics); pointSection("明确决定", doc.decisions); pointSection("未解决问题", doc.openQuestions)
@@ -65,8 +65,9 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                         let taskSnapshot = tasks?.items ?? []
                         Task {
                             do {
-                                let text = try MinutesExportRenderer.render(document: document, candidates: coordinator.candidates(meetingID: meeting.id), linkedTasks: taskSnapshot, language: language, format: format)
-                                _ = try await MinutesFileExporter().export(text: text, suggestedName: document.meetingTitle + "-会议纪要", format: format)
+                                var exportDocument = document; exportDocument.meetingTitle = meeting.title
+                                let text = try MinutesExportRenderer.render(document: exportDocument, candidates: coordinator.candidates(meetingID: meeting.id), linkedTasks: taskSnapshot, language: language, format: format)
+                                _ = try await MinutesFileExporter().export(text: text, suggestedName: meeting.title + "-会议纪要", format: format)
                             } catch { self.error = ProviderNetwork.safeError(error) }
                         }
                     } }
@@ -102,10 +103,10 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
         VStack(alignment: .leading, spacing: 18) {
             Text(incremental ? "会议中提取行动项" : "生成会议纪要").font(.title2.bold())
             Form {
-                Picker("纪要服务", selection: $options.provider) { ForEach(AIProvider.allCases.filter(\.supportsTranslation)) { Text($0.label).tag($0) } }
+                Picker("纪要服务", selection: $options.provider) { ForEach(AIProvider.allCases.filter(\.supportsTranslation)) { Text(LocalizedStringKey($0.label)).tag($0) } }
                     .onChange(of: options.provider) { _, provider in options.model = settings.value.textModels[provider.rawValue] ?? provider.defaultTextModel }
                 TextField("文字模型", text: $options.model)
-                Picker("纪要语言", selection: $options.language) { ForEach(MinutesLanguage.allCases) { Text($0.label).tag($0) } }
+                Picker("纪要语言", selection: $options.language) { ForEach(MinutesLanguage.allCases) { Text(LocalizedStringKey($0.label)).tag($0) } }
                 Toggle("已知实际会议时间", isOn: $knownDate)
                 if knownDate { DatePicker("实际会议开始", selection: $reference).environment(\.timeZone, TimeZone(identifier: options.timeZoneID) ?? .current) }
                 TextField("会议时区", text: $options.timeZoneID)
@@ -150,8 +151,8 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             Text("导出会议纪要").font(.title2.bold())
-            Picker("语言", selection: $language) { ForEach(MinutesLanguage.allCases) { Text($0.label).tag($0) } }
-            Picker("文件格式", selection: $format) { ForEach(MinutesExportFormat.allCases) { Text($0.label).tag($0) } }
+            Picker("语言", selection: $language) { ForEach(MinutesLanguage.allCases) { Text(LocalizedStringKey($0.label)).tag($0) } }
+            Picker("文件格式", selection: $format) { ForEach(MinutesExportFormat.allCases) { Text(LocalizedStringKey($0.label)).tag($0) } }
             Text("导出所选纪要版本、行动项和当前关联任务状态。此操作不调用 AI。").font(.callout).foregroundStyle(.secondary)
             HStack { Button("取消") { dismiss() }; Spacer(); Button("选择保存位置") { submit(language, format); dismiss() }.buttonStyle(.borderedProminent) }
         }.padding(24).frame(width: 470)

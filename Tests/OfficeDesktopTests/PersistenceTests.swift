@@ -30,7 +30,11 @@ import OfficeCore
         #expect(store.value.timeZoneID == "Asia/Shanghai")
         var prefs = store.value; prefs.displayName = "田中"; prefs.summaryHour = 8
         try store.save(prefs)
-        #expect(PreferencesStore(defaults: defaults).value == prefs)
+        store.setInterfaceLanguage(.japanese)
+        let reopened = PreferencesStore(defaults: defaults)
+        #expect(reopened.value == prefs)
+        #expect(reopened.interfaceLanguage == .japanese)
+        #expect(reopened.interfaceLanguage.locale.identifier == "ja")
     }
 }
 

@@ -16,6 +16,7 @@ import OfficeCore
     @State private var exportingAudio = false
     @State private var tab = "转写"
     @State private var setupPresented = false
+    @State private var renaming: MeetingSession?
     @State private var filePicker = false
     @State private var pickingRecovery = false
     @State private var importedURL: URL?
@@ -45,10 +46,11 @@ import OfficeCore
                     } label: {
                         VStack(alignment: .leading, spacing: 5) {
                             if let groups { Text(groups.isLoaded ? GroupRules.path(item.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary) }
-                            Text(item.title).font(.headline).lineLimit(2); Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption); Text(item.state.label).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+                            Text(item.title).font(.headline).lineLimit(2); Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption); Text(LocalizedStringKey(item.state.label)).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
                     }.buttonStyle(.borderless).disabled(controller.isActive)
                     .contextMenu {
                         if let groups { GroupMoveMenu(groups: groups, currentID: item.groupID) { try controller.moveToGroup(id: item.id, groupID: $0) }.disabled(controller.isActive && controller.meeting?.id == item.id) }
+                        Button("修改会议名称") { renaming = item }
                         Button("删除会议", role: .destructive) { deleteAudio = false; deleting = item }
                             .disabled(controller.isActive)
                     }
@@ -64,6 +66,9 @@ import OfficeCore
                     catch { self.error = ProviderNetwork.safeError(error) }
                 }
             }
+        }
+        .sheet(item: $renaming) { item in
+            MeetingTitleEditor(meeting: item) { title in try controller.rename(item.id, title: title) }
         }
         .sheet(item: $deleting) { item in
             VStack(alignment: .leading, spacing: 18) {
@@ -120,8 +125,11 @@ import OfficeCore
             VStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack {
-                        Text(meeting.title).font(.title2.bold()); Spacer()
-                        Text(meeting.state.label).foregroundStyle(controller.isActive ? .red : .secondary)
+                        Text(meeting.title).font(.title2.bold())
+                        Button { renaming = meeting } label: { Image(systemName: "pencil") }
+                            .buttonStyle(.borderless).help("修改会议名称").accessibilityLabel("修改会议名称")
+                        Spacer()
+                        Text(LocalizedStringKey(meeting.state.label)).foregroundStyle(controller.isActive ? .red : .secondary)
                         Button(role: .destructive) { deleteAudio = false; deleting = meeting } label: { Label("删除会议", systemImage: "trash") }
                             .disabled(controller.isActive || exportingAudio)
                     }
@@ -131,12 +139,26 @@ import OfficeCore
                             GroupMoveMenu(groups: groups, currentID: meeting.groupID) { try controller.moveToGroup(id: meeting.id, groupID: $0) }.disabled(controller.isActive)
                         }
                     }
-                    Text(meeting.configuration.shouldTranslate ? "\(meeting.configuration.speechProvider.label)识别 · \(meeting.configuration.translationProvider.label)翻译 · \(meeting.configuration.direction.label)" : "\(meeting.configuration.speechProvider.label)识别 · 仅转写 · \(meeting.configuration.effectiveRecognitionLanguage.label)").font(.caption).foregroundStyle(.secondary)
+                    HStack(spacing: 4) {
+                        Text(LocalizedStringKey(meeting.configuration.speechProvider.label))
+                        Text("识别")
+                        Text("·")
+                        if meeting.configuration.shouldTranslate {
+                            Text(LocalizedStringKey(meeting.configuration.translationProvider.label))
+                            Text("翻译")
+                            Text("·")
+                            Text(LocalizedStringKey(meeting.configuration.direction.label))
+                        } else {
+                            Text("仅转写")
+                            Text("·")
+                            Text(LocalizedStringKey(meeting.configuration.effectiveRecognitionLanguage.label))
+                        }
+                    }.font(.caption).foregroundStyle(.secondary)
                     if controller.isActive {
                         TimelineView(.periodic(from: Date(), by: 1)) { context in
                             HStack { Image(systemName: "record.circle").foregroundStyle(.red); Text("\(Int(max(0, context.date.timeIntervalSince(meeting.startedAt)))) 秒").monospacedDigit()
                                 ForEach(Array(controller.levels.keys).sorted(by: { $0.rawValue < $1.rawValue }), id: \.self) { source in
-                                    Text(source.label).font(.caption); ProgressView(value: controller.levels[source] ?? 0).frame(width: 70)
+                                    Text(LocalizedStringKey(source.label)).font(.caption); ProgressView(value: controller.levels[source] ?? 0).frame(width: 70)
                                 }
                             }
                         }
@@ -209,5 +231,33 @@ import OfficeCore
     }
     private func resume(process: Bool) {
         Task { do { try await controller.resume(processBufferedAudio: process) } catch { self.error = ProviderNetwork.safeError(error) } }
+    }
+}
+
+@MainActor private struct MeetingTitleEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var title: String
+    @State private var error: String?
+    let meeting: MeetingSession
+    let save: (String) throws -> Void
+    init(meeting: MeetingSession, save: @escaping (String) throws -> Void) {
+        self.meeting = meeting; self.save = save; _title = State(initialValue: meeting.title)
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            Text("修改会议名称").font(.title2.bold())
+            TextField("会议名称", text: $title).textFieldStyle(.roundedBorder).onSubmit(saveTitle)
+            if let error { Text(error).foregroundStyle(.orange) }
+            HStack {
+                Spacer()
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("保存") { saveTitle() }.buttonStyle(.borderedProminent)
+                    .disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || title.count > 200)
+            }
+        }.padding(24).frame(width: 420)
+    }
+    private func saveTitle() {
+        do { try save(title); dismiss() }
+        catch { self.error = error.localizedDescription }
     }
 }

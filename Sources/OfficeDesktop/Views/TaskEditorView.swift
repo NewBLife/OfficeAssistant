@@ -15,10 +15,19 @@ import OfficeCore
 
     init(item: TaskItem, store: TaskStore, preferences: AppPreferences, groups: GroupStore? = nil) {
         self.groups = groups; self.store = store; self.preferences = preferences
-        isNew = !store.items.contains { $0.id == item.id }
+        let isNew = !store.items.contains { $0.id == item.id }
+        self.isNew = isNew
         _draft = State(initialValue: item)
-        _hasDeadline = State(initialValue: item.dueAt != nil)
-        _deadline = State(initialValue: item.dueAt ?? Date().addingTimeInterval(3600))
+        _hasDeadline = State(initialValue: item.dueAt != nil || (isNew && item.dueText == nil))
+        _deadline = State(initialValue: item.dueAt ?? Self.defaultDeadline(now: Date(), timeZoneID: item.timeZoneID) ?? Date())
+    }
+    static func defaultDeadline(now: Date, timeZoneID: String) -> Date? {
+        guard let timeZone = TimeZone(identifier: timeZoneID) else { return nil }
+        var calendar = Calendar(identifier: .gregorian); calendar.timeZone = timeZone
+        let day = calendar.dateComponents([.year, .month, .day], from: now)
+        var deadline = DateComponents(); deadline.year = day.year; deadline.month = day.month; deadline.day = day.day
+        deadline.hour = 21; deadline.minute = 0; deadline.second = 0
+        return calendar.date(from: deadline)
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -65,13 +74,17 @@ import OfficeCore
                         }
                         Text("截止时间按上述时区显示；更换时区不会改变已选的绝对时刻。")
                             .font(.caption).foregroundStyle(.secondary)
+                        if isNew && draft.dueText == nil {
+                            Text("新建待办默认截止时间为当天21:00，可按需修改或关闭。")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     } else if let original = draft.dueText {
                         Text("时间待补充：\(original)").foregroundStyle(.orange)
                         Text("尚未安排到点提醒，可以先保存。需要提醒时，请开启截止时间并选择具体时刻。")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Picker("重复", selection: $draft.repeatRule) {
-                        ForEach(RepeatRule.allCases, id: \.self) { Text($0.label).tag($0) }
+                        ForEach(RepeatRule.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag($0) }
                     }.disabled(!hasDeadline)
                     if hasDeadline && deadline <= Date() { Text("该时间已经过去，保存后会在今日待办中显示为逾期，不补发历史提醒。")
                         .font(.caption).foregroundStyle(.orange) }
@@ -80,7 +93,7 @@ import OfficeCore
                     Section("来源会议") {
                         ForEach(links) { link in
                             Text(link.meetingTitleSnapshot).font(.headline)
-                            ForEach(link.evidence) { ref in Text("\(ref.segmentID.source.label)：\(ref.quote)").font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
+                            ForEach(link.evidence) { ref in Text(LocalizedStringKey("\(ref.segmentID.source.label)：\(ref.quote)")).font(.caption).foregroundStyle(.secondary).textSelection(.enabled) }
                         }
                         Text("来源关系独立保存；可在待办列表打开会议，在会议页解除关联。").font(.caption).foregroundStyle(.secondary)
                     }
@@ -103,8 +116,8 @@ import OfficeCore
     private func applyQuickEntry() {
         let suggestion = QuickEntryParser.parse(quickText, reference: Date(), timeZoneID: draft.timeZoneID)
         draft.title = suggestion.title; draft.dueText = suggestion.dueText
-        hasDeadline = suggestion.dueAt != nil
-        if let date = suggestion.dueAt { deadline = date }
+        if let date = suggestion.dueAt { hasDeadline = true; deadline = date }
+        else { hasDeadline = !suggestion.needsClarification }
         message = suggestion.needsClarification ? "时间尚不明确，已保留原文。请确认具体截止时间。" : nil
     }
 }

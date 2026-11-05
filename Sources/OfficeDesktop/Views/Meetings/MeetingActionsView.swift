@@ -67,12 +67,18 @@ private struct ActionPresentation: Identifiable {
             HStack {
                 if !added { Toggle("选择", isOn: Binding(get: { selected.contains(item.id) }, set: { if $0 { selected.insert(item.id) } else { selected.remove(item.id) } })).labelsHidden().disabled(item.clarifications.contains(.possibleDuplicate) || item.clarifications.contains(.commitment)) }
                 Text(item.titleZH).font(.headline); Spacer()
-                if let task { Text("已加入 · " + task.status.label).foregroundStyle(.green) }
+                if let task { Text(LocalizedStringKey("已加入 · \(task.status.label)")).foregroundStyle(.green) }
                 else if added { Text("已加入，任务已删除或不可用").foregroundStyle(.secondary) }
             }
             Text("负责人：\(item.owner ?? "未指定") · 时间：\(item.dueText ?? "未安排时间")").font(.caption).foregroundStyle(.secondary)
-            if !item.clarifications.isEmpty && !added { Text(item.clarifications.map(\.label).joined(separator: " · ")).font(.caption).foregroundStyle(.orange) }
-            ForEach(item.evidence) { ref in Button { openMeeting(meeting.id, ref) } label: { Text("\(ref.segmentID.source.label) \(Int(ref.sourceStartSeconds))秒：\(ref.quote)").font(.caption).multilineTextAlignment(.leading) }.buttonStyle(.link) }
+            if !item.clarifications.isEmpty && !added {
+                HStack { ForEach(item.clarifications, id: \.self) { Text(LocalizedStringKey($0.label)) } }
+                    .font(.caption).foregroundStyle(.orange)
+            }
+            ForEach(item.evidence) { ref in Button { openMeeting(meeting.id, ref) } label: {
+                Text("\(ref.segmentID.source.label) \(Int(ref.sourceStartSeconds))秒：\(ref.quote)")
+                    .font(.caption).multilineTextAlignment(.leading)
+            }.buttonStyle(.link) }
             if !added {
                 HStack {
                     Button("校对并加入待办") { presentation = ActionPresentation(mode: "edit", candidate: item) }.buttonStyle(.borderedProminent).disabled(tasks?.isLoaded != true)
@@ -151,7 +157,7 @@ private struct ActionPresentation: Identifiable {
             TextField("搜索标题", text: $search).textFieldStyle(.roundedBorder)
             List(tasks.items.filter { search.isEmpty || $0.title.localizedCaseInsensitiveContains(search) }) { task in
                 Button { do { try select(task.id); dismiss() } catch { self.error = error.localizedDescription } } label: {
-                    HStack { VStack(alignment: .leading) { Text(task.title); Text(task.status.label).font(.caption).foregroundStyle(.secondary) }; Spacer(); Text("关联") }.frame(maxWidth: .infinity).contentShape(Rectangle())
+                    HStack { VStack(alignment: .leading) { Text(task.title); Text(LocalizedStringKey(task.status.label)).font(.caption).foregroundStyle(.secondary) }; Spacer(); Text("关联") }.frame(maxWidth: .infinity).contentShape(Rectangle())
                 }.buttonStyle(.borderless)
             }
             if let error { Text(error).foregroundStyle(.orange) }

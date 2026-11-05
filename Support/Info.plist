@@ -4,6 +4,8 @@
   <key>CFBundleIdentifier</key><string>local.officeassistant.desktop</string>
   <key>CFBundleName</key><string>OfficeAssistant</string>
   <key>CFBundleDisplayName</key><string>办公助手</string>
+  <key>CFBundleDevelopmentRegion</key><string>zh-Hans</string>
+  <key>CFBundleLocalizations</key><array><string>zh-Hans</string><string>en</string><string>ja</string></array>
   <key>CFBundleExecutable</key><string>OfficeAssistant</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>

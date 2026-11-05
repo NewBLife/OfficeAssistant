@@ -13,16 +13,18 @@ import OfficeDesktop
         AppDelegate.model = model
     }
     var body: some Scene {
-        Window("办公助手", id: "workspace") { WorkspaceView(model: model).tint(.blue) }
+        Window("办公助手", id: "workspace") {
+            WorkspaceView(model: model).tint(.blue).environment(\.locale, model.preferences.interfaceLanguage.locale)
+        }
             .defaultSize(width: 1040, height: 760)
             .commands {
                 CommandGroup(replacing: .newItem) {
                     Button("新增待办") { model.showWorkspace(newTask: true) }.keyboardShortcut("n", modifiers: .command)
                 }
             }
-        Settings { SettingsView(model: model).frame(width: 620, height: 720) }
+        Settings { SettingsView(model: model).frame(width: 620, height: 720).environment(\.locale, model.preferences.interfaceLanguage.locale) }
         MenuBarExtra {
-            OfficeMenu(model: model)
+            OfficeMenu(model: model).environment(\.locale, model.preferences.interfaceLanguage.locale)
         } label: { Image(systemName: model.meetings?.isActive == true ? "record.circle.fill" : "checklist") }
     }
 }

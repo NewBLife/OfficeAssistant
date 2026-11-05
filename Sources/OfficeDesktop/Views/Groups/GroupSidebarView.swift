@@ -53,7 +53,7 @@ private struct GroupEditRequest: Identifiable {
     }
     private func row(_ title: String, scope: GroupScope, icon: String) -> some View {
         Button { selection = scope; activate() } label: {
-            Label(title, systemImage: icon).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
+            Label(LocalizedStringKey(title), systemImage: icon).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 4).padding(.horizontal, 3)
                 .background(active && selection == scope ? Color.accentColor.opacity(0.16) : .clear, in: RoundedRectangle(cornerRadius: 5))
                 .contentShape(Rectangle())

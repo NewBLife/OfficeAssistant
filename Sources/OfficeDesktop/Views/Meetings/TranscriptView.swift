@@ -12,7 +12,7 @@ import OfficeCore
             ForEach(controller.segments) { segment in
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Label(segment.id.source.label, systemImage: segment.id.source == .microphone ? "mic" : "waveform")
+                        Label(LocalizedStringKey(segment.id.source.label), systemImage: segment.id.source == .microphone ? "mic" : "waveform")
                         Text(time(segment.sourceStartSeconds)).monospacedDigit()
                         if segment.finalText == nil { Text("识别中").foregroundStyle(.orange) }
                         Spacer()

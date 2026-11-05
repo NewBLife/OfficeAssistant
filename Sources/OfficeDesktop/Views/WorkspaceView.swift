@@ -10,6 +10,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
 
 @MainActor public struct WorkspaceView: View {
     @Bindable var model: OfficeAppModel
+    @Environment(\.locale) private var locale
     @Environment(\.openWindow) private var openWindow
     @State private var section: WorkspaceSection? = .today
     @State private var groupScope: GroupScope = .all
@@ -95,7 +96,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(section?.title ?? "今天").font(.system(size: 30, weight: .bold))
+                            Text(LocalizedStringKey(section?.title ?? "今天")).font(.system(size: 30, weight: .bold))
                             Text(dateCaption).font(.callout).foregroundStyle(.secondary)
                         }
                         Spacer()
@@ -144,8 +145,9 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
         }.padding(18).frame(maxWidth: .infinity).background(.background, in: RoundedRectangle(cornerRadius: 12))
     }
     private var dateCaption: String {
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN")
-        formatter.timeZone = TimeZone(identifier: model.preferences.value.timeZoneID); formatter.dateFormat = "M月d日 EEEE"
+        let formatter = DateFormatter(); formatter.locale = locale
+        formatter.timeZone = TimeZone(identifier: model.preferences.value.timeZoneID)
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMMdEEEE", options: 0, locale: locale)
         return formatter.string(from: model.now)
     }
     private func newTask() {

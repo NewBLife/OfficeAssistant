@@ -2,6 +2,7 @@ import SwiftUI
 import OfficeCore
 
 @MainActor struct TaskListView: View {
+    @Environment(\.locale) private var locale
     let items: [TaskItem]
     let store: TaskStore
     let now: Date
@@ -34,23 +35,23 @@ import OfficeCore
                         }
                         if !item.notes.isEmpty { Text(item.notes).font(.callout).foregroundStyle(.secondary).lineLimit(2) }
                         ForEach((item.meetingLinks ?? []).reduce(into: [TaskMeetingLink]()) { values, link in if !values.contains(where: { $0.meetingID == link.meetingID }) { values.append(link) } }) { link in
-                            Button { openMeeting?(link.meetingID, link.evidence.first) } label: { Label("来源会议：" + link.meetingTitleSnapshot, systemImage: "waveform") }
+                            Button { openMeeting?(link.meetingID, link.evidence.first) } label: { Label { Text("来源会议：\(link.meetingTitleSnapshot)") } icon: { Image(systemName: "waveform") } }
                                 .buttonStyle(.link).font(.caption).disabled(openMeeting == nil)
                         }
                         HStack(spacing: 12) {
-                            Label(item.owner ?? "未指定", systemImage: "person")
+                            Label(LocalizedStringKey(item.owner ?? "未指定"), systemImage: "person")
                             if let due = item.dueAt {
                                 Label(format(due, zone: item.timeZoneID), systemImage: "calendar")
                                     .foregroundStyle(due < now && item.status != .completed ? Color.orange : Color.secondary)
                             } else { Label(item.dueText == nil ? "未安排时间" : "时间待补充", systemImage: "clock") }
-                            if item.repeatRule != .none { Label(item.repeatRule.label, systemImage: "repeat") }
+                            if item.repeatRule != .none { Label(LocalizedStringKey(item.repeatRule.label), systemImage: "repeat") }
                         }.font(.caption).foregroundStyle(.secondary)
                         if let snooze = item.snoozedUntil, item.status != .completed {
                             Text("稍后提醒：\(format(snooze, zone: item.timeZoneID))").font(.caption).foregroundStyle(.blue)
                         }
                     }
                     VStack(alignment: .trailing, spacing: 10) {
-                        Text(item.status.label).font(.caption).foregroundStyle(item.status == .inProgress ? .blue : .secondary)
+                        Text(LocalizedStringKey(item.status.label)).font(.caption).foregroundStyle(item.status == .inProgress ? .blue : .secondary)
                         Menu {
                             if item.status != .completed {
                                 Button("编辑") { edit(item) }
@@ -88,8 +89,9 @@ import OfficeCore
     }
     private func perform(_ action: () throws -> Void) { do { try action() } catch { self.error = error.localizedDescription } }
     private func format(_ date: Date, zone: String) -> String {
-        let formatter = DateFormatter(); formatter.locale = Locale(identifier: "zh_CN")
-        formatter.timeZone = TimeZone(identifier: zone); formatter.dateFormat = "M月d日 HH:mm"
+        let formatter = DateFormatter(); formatter.locale = locale
+        formatter.timeZone = TimeZone(identifier: zone)
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MdHm", options: 0, locale: locale)
         return formatter.string(from: date) + (zone == "Asia/Shanghai" ? "" : " · " + zone)
     }
 }

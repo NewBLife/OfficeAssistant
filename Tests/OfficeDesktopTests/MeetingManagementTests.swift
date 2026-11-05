@@ -4,6 +4,20 @@ import OfficeCore
 @testable import OfficeDesktop
 
 @MainActor @Suite struct MeetingManagementTests {
+    @Test func renamingPersistsAndRejectsAnEmptyTitle() throws {
+        let repo = try CoreDataMeetingRepository(inMemory: true)
+        let meeting = MeetingSession(title: "原名称", configuration: AIConfiguration())
+        try repo.save(meeting)
+        let controller = MeetingSessionController(repository: repo, credentials: TestCredentials())
+        try controller.open(meeting)
+        try controller.rename(meeting.id, title: "  新名称  ")
+        #expect(controller.meeting?.title == "新名称")
+        #expect(controller.history.first?.title == "新名称")
+        #expect(try repo.list().first?.title == "新名称")
+        #expect(throws: (any Error).self) { try controller.rename(meeting.id, title: " \n ") }
+        #expect(try repo.list().first?.title == "新名称")
+    }
+
     @Test func deletionPersistsAndOnlyRemovesTargetMeetingData() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

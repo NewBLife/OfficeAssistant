@@ -33,7 +33,12 @@ import OfficeCore
         guard let meeting = try meetings.list().first(where: { $0.id == id }) else { throw OfficeError.invalid("来源会议不可用。") }
         return MinutesSnapshot(meeting: meeting, segments: try meetings.segments(meetingID: id))
     }
-    public func isStale(_ document: MinutesDocument) -> Bool { (try? snapshot(document.meetingID).fingerprint) != document.sourceFingerprint }
+    public func isStale(_ document: MinutesDocument) -> Bool {
+        guard var latest = try? snapshot(document.meetingID) else { return true }
+        if latest.fingerprint == document.sourceFingerprint { return false }
+        latest.meeting.title = document.meetingTitle
+        return latest.fingerprint != document.sourceFingerprint
+    }
     public func generate(meetingID: UUID, options: MinutesOptions) async throws { try await run(meetingID: meetingID, options: options, incrementalOnly: false) }
     private func run(meetingID: UUID, options: MinutesOptions, incrementalOnly: Bool) async throws {
         guard !isRunning else { throw OfficeError.invalid("已有纪要作业进行中，请稍后重试。") }

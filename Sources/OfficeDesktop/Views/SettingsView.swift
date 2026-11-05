@@ -11,6 +11,13 @@ import OfficeCore
         VStack(alignment: .leading, spacing: 0) {
             Text("设置").font(.largeTitle.bold()).padding(28)
             Form {
+                Section("外观") {
+                    Picker("界面语言", selection: Binding(get: { model.preferences.interfaceLanguage }, set: { model.preferences.setInterfaceLanguage($0) })) {
+                        ForEach(InterfaceLanguage.allCases) { language in Text(LocalizedStringKey(language.name)).tag(language) }
+                    }
+                    Text("默认跟随系统语言，也可以在这里切换为简体中文、英文或日语。")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("个人信息") {
                     TextField("你的姓名", text: $draft.displayName)
                     Text("新增任务时点击“我”，使用这里的姓名。未指定的负责人会保持为空。")
@@ -33,7 +40,7 @@ import OfficeCore
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     HStack {
-                        Label(notificationLabel, systemImage: model.notificationStatus == .authorized ? "bell" : "bell.slash")
+                        Label(LocalizedStringKey(notificationLabel), systemImage: model.notificationStatus == .authorized ? "bell" : "bell.slash")
                         Spacer()
                         Button(model.notificationStatus == .notDetermined ? "开启提醒" : "系统通知设置") {
                             if model.notificationStatus == .notDetermined { Task { await model.enableNotifications() } }

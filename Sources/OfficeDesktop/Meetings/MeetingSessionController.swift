@@ -87,6 +87,14 @@ public struct MeetingSetup {
         if meeting?.id == id { meeting = item }
         reloadHistory()
     }
+    public func rename(_ id: UUID, title: String) throws {
+        let value = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 200 else { throw OfficeError.invalid("会议名称不能为空且不能超过200字。") }
+        guard var item = try repository.list().first(where: { $0.id == id }) else { throw OfficeError.invalid("会议已不存在。") }
+        item.title = value; try repository.save(item)
+        if meeting?.id == id { meeting = item }
+        reloadHistory()
+    }
     public func delete(_ id: UUID, includingAudio: Bool = false) throws {
         guard !isActive else { throw OfficeError.invalid("请先暂停或停止记录，再删除会议。") }
         guard let item = try repository.list().first(where: { $0.id == id }) else { throw OfficeError.invalid("会议已删除或不可用。") }

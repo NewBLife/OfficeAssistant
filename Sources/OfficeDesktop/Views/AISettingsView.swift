@@ -26,20 +26,20 @@ import OfficeCore
                     Text("仅转写").tag(false); Text("转写并翻译").tag(true)
                 }
                 Picker("语音识别", selection: $draft.speechProvider) {
-                    ForEach(AIProvider.allCases.filter(\.supportsSpeech)) { Text($0.label + ($0 == .siliconflow ? "（分段）" : "（实时）")).tag($0) }
+                    ForEach(AIProvider.allCases.filter(\.supportsSpeech)) { Text(LocalizedStringKey($0.label + ($0 == .siliconflow ? "（分段）" : "（实时）"))).tag($0) }
                 }
                 Picker("默认识别语言", selection: Binding(get: { draft.effectiveRecognitionLanguage }, set: { draft.recognitionLanguage = $0 })) {
-                    ForEach(RecognitionLanguage.allCases) { Text($0.label).tag($0) }
+                    ForEach(RecognitionLanguage.allCases) { Text(LocalizedStringKey($0.label)).tag($0) }
                 }
                 if draft.shouldTranslate {
-                    Picker("文字翻译", selection: $draft.translationProvider) { ForEach(AIProvider.allCases.filter(\.supportsTranslation)) { Text($0.label).tag($0) } }
-                    Picker("默认方向", selection: $draft.direction) { ForEach(TranslationDirection.allCases) { Text($0.label).tag($0) } }
+                    Picker("文字翻译", selection: $draft.translationProvider) { ForEach(AIProvider.allCases.filter(\.supportsTranslation)) { Text(LocalizedStringKey($0.label)).tag($0) } }
+                    Picker("默认方向", selection: $draft.direction) { ForEach(TranslationDirection.allCases) { Text(LocalizedStringKey($0.label)).tag($0) } }
                 }
                 Text(draft.shouldTranslate ? "音频发送至选中的识别服务，原文与必要上下文发送至选中的翻译服务。记录保存在本机。" : "音频发送至选中的识别服务，原文保存在本机。不读取翻译凭证，不发送翻译请求。")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("服务凭证") {
-                Picker("配置服务", selection: $provider) { ForEach(AIProvider.allCases) { Text($0.label).tag($0) } }
+                Picker("配置服务", selection: $provider) { ForEach(AIProvider.allCases) { Text(LocalizedStringKey($0.label)).tag($0) } }
                     .onChange(of: provider) { _, _ in clearSecrets(); models = []; message = nil }
                 Label(saved.contains(provider) ? "凭证已保存，真实识别仍需验证" : "尚未保存凭证", systemImage: saved.contains(provider) ? "key.fill" : "key")
                 if provider == .azureSpeech {

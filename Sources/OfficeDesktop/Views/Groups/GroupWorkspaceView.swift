@@ -43,7 +43,7 @@ import OfficeCore
                     TextField("搜索标题、备注或负责人", text: $search).textFieldStyle(.roundedBorder)
                     Picker("状态", selection: $status) {
                         Text("全部状态").tag(Optional<TaskStatus>.none)
-                        ForEach(TaskStatus.allCases, id: \.self) { Text($0.label).tag(Optional($0)) }
+                        ForEach(TaskStatus.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag(Optional($0)) }
                     }.frame(width: 140)
                     Button {
                         var item = TaskItem(title: "", timeZoneID: model.preferences.value.timeZoneID)

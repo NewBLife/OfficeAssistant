@@ -3,6 +3,7 @@ import OfficeCore
 
 @MainActor struct MeetingSetupView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let groups: GroupStore?
     @State private var groupID: UUID?
     let importing: Bool
@@ -23,7 +24,7 @@ import OfficeCore
         self.groups = groups; _groupID = State(initialValue: defaultGroupID)
         self.importing = importing; self.submit = submit
         _config = State(initialValue: configuration)
-        _title = State(initialValue: "会议 " + Date().formatted(.dateTime.month().day().hour().minute()))
+        _title = State(initialValue: "")
     }
     var body: some View {
         VStack(spacing: 0) {
@@ -38,16 +39,16 @@ import OfficeCore
                     }
                     Picker("识别服务", selection: $config.speechProvider) {
                         ForEach(AIProvider.allCases.filter(\.supportsSpeech)) { provider in
-                            Text(provider.label + (importing && !provider.supportsFiles ? "（仅实时）" : "")).tag(provider)
+                            Text(LocalizedStringKey(provider.label + (importing && !provider.supportsFiles ? "（仅实时）" : ""))).tag(provider)
                         }
                     }
                     if importing && !config.speechProvider.supportsFiles { Text("音频文件请选择 OpenAI 或硅基流。") .foregroundStyle(.orange) }
                     Picker("识别语言", selection: Binding(get: { config.effectiveRecognitionLanguage }, set: { config.recognitionLanguage = $0 })) {
-                        ForEach(RecognitionLanguage.allCases) { Text($0.label).tag($0) }
+                        ForEach(RecognitionLanguage.allCases) { Text(LocalizedStringKey($0.label)).tag($0) }
                     }
                     if config.shouldTranslate {
-                        Picker("翻译服务", selection: $config.translationProvider) { ForEach(AIProvider.allCases.filter(\.supportsTranslation)) { Text($0.label).tag($0) } }
-                        Picker("翻译方向", selection: $config.direction) { ForEach(TranslationDirection.allCases) { Text($0.label).tag($0) } }
+                        Picker("翻译服务", selection: $config.translationProvider) { ForEach(AIProvider.allCases.filter(\.supportsTranslation)) { Text(LocalizedStringKey($0.label)).tag($0) } }
+                        Picker("翻译方向", selection: $config.direction) { ForEach(TranslationDirection.allCases) { Text(LocalizedStringKey($0.label)).tag($0) } }
                     }
                 }
                 if !importing {
@@ -97,5 +98,11 @@ import OfficeCore
                 submit(setup); dismiss()
             }.buttonStyle(.borderedProminent).disabled(title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || (importing && !config.speechProvider.supportsFiles) || (!importing && !mic && (scene != "线上会议" || sourceID.isEmpty)) || (!importing && scene == "线上会议" && sourceID.isEmpty)) }.padding(20)
         }.frame(width: 590, height: 720)
+            .onAppear {
+                if title.isEmpty {
+                    let formatter = DateFormatter(); formatter.locale = locale; formatter.dateStyle = .medium; formatter.timeStyle = .short
+                    title = String(localized: "会议", locale: locale) + " " + formatter.string(from: Date())
+                }
+            }
     }
 }
