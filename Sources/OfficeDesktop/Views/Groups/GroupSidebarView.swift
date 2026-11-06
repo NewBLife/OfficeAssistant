@@ -13,7 +13,7 @@ private struct GroupEditRequest: Identifiable {
     @State private var deleting: OfficeCore.WorkGroup?
     @State private var error: String?
     var body: some View {
-        Section("分组") {
+        Section {
             if !groups.isLoaded {
                 Label("分组暂时不可用", systemImage: "exclamationmark.triangle").foregroundStyle(.orange)
                 Button("重试读取分组") { do { try groups.reload() } catch { self.error = groups.errorMessage } }
@@ -34,19 +34,23 @@ private struct GroupEditRequest: Identifiable {
                 if groups.groups.isEmpty { Text("按客户或项目新建分组").font(.caption).foregroundStyle(.secondary) }
                 Button { editing = GroupEditRequest() } label: { Label("新建分组", systemImage: "folder.badge.plus") }
             }
+        } header: {
+            // Section modifiers can be applied to multiple list children. Keep
+            // presentation on one stable view so a request opens only one dialog.
+            Text("分组")
+                .sheet(item: $editing) { request in GroupEditorView(groups: groups, editingID: request.editingID, parentID: request.parentID) }
+                .confirmationDialog("删除分组“\(deleting?.name ?? "")”？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
+                    Button("删除分组", role: .destructive) {
+                        if let deleting { do { try groups.delete(id: deleting.id) } catch { self.error = error.localizedDescription } }
+                        deleting = nil
+                    }
+                    Button("取消", role: .cancel) { deleting = nil }
+                } message: {
+                    let count = groups.groups.filter { $0.parentID == deleting?.id }.count
+                    Text(count > 0 ? "同时移除 \(count) 个子分组。会议、纪要和待办全部保留，并归入“未分组”。" : "会议、纪要和待办全部保留，并归入“未分组”。")
+                }
+                .alert("分组操作未完成", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("好") { error = nil } } message: { Text(error ?? "") }
         }
-        .sheet(item: $editing) { request in GroupEditorView(groups: groups, editingID: request.editingID, parentID: request.parentID) }
-        .confirmationDialog("删除分组“\(deleting?.name ?? "")”？", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }), titleVisibility: .visible) {
-            Button("删除分组", role: .destructive) {
-                if let deleting { do { try groups.delete(id: deleting.id) } catch { self.error = error.localizedDescription } }
-                deleting = nil
-            }
-            Button("取消", role: .cancel) { deleting = nil }
-        } message: {
-            let count = groups.groups.filter { $0.parentID == deleting?.id }.count
-            Text(count > 0 ? "同时移除 \(count) 个子分组。会议、纪要和待办全部保留，并归入“未分组”。" : "会议、纪要和待办全部保留，并归入“未分组”。")
-        }
-        .alert("分组操作未完成", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) { Button("好") { error = nil } } message: { Text(error ?? "") }
         .onChange(of: groups.groups) { _, values in
             if case let .group(id) = selection, !values.contains(where: { $0.id == id }) { selection = .ungrouped }
         }
