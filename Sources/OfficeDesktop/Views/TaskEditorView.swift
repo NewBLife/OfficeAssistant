@@ -86,6 +86,23 @@ import OfficeCore
                     Picker("重复", selection: $draft.repeatRule) {
                         ForEach(RepeatRule.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag($0) }
                     }.disabled(!hasDeadline)
+                        .onChange(of: draft.repeatRule) { _, rule in
+                            if rule == .monthly && draft.monthlyDay == nil {
+                                var calendar = Calendar(identifier: .gregorian)
+                                calendar.timeZone = TimeZone(identifier: draft.timeZoneID) ?? .current
+                                draft.monthlyDay = calendar.component(.day, from: deadline)
+                            }
+                        }
+                    if hasDeadline && draft.repeatRule == .monthly {
+                        Picker("每月几号", selection: Binding(
+                            get: { draft.monthlyDay ?? 1 },
+                            set: { draft.monthlyDay = $0 }
+                        )) {
+                            ForEach(1...31, id: \.self) { day in Text("\(day) 号").tag(day) }
+                        }
+                        Text("所选日期不存在时，安排在当月最后一天；下个月仍按所选日期重复。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if hasDeadline && deadline <= Date() { Text("该时间已经过去，保存后会在今日待办中显示为逾期，不补发历史提醒。")
                         .font(.caption).foregroundStyle(.orange) }
                 }
@@ -107,6 +124,11 @@ import OfficeCore
                 Button("保存待办") {
                     draft.dueAt = hasDeadline ? deadline : nil
                     if !hasDeadline { draft.repeatRule = .none }
+                    if draft.repeatRule == .monthly && draft.monthlyDay == nil {
+                        var calendar = Calendar(identifier: .gregorian)
+                        calendar.timeZone = TimeZone(identifier: draft.timeZoneID) ?? .current
+                        draft.monthlyDay = calendar.component(.day, from: deadline)
+                    }
                     do { try store.upsert(draft); dismiss() } catch { message = error.localizedDescription }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(draft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

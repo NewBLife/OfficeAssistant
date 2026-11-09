@@ -22,6 +22,39 @@ struct TaskRulesTests {
         let next = try TaskRules.complete(item, at: item.dueAt!).next
         #expect(next?.dueAt == date("2026-11-01T09:00:00-05:00"))
     }
+    @Test func testMonthlyDayRecoversAfterShortMonth() throws {
+        var item = task("2027-01-31T09:00:00+08:00", rule: .monthly)
+        item.monthlyDay = 31
+        let february = try #require(TaskRules.complete(item, at: item.dueAt!).next)
+        #expect(february.dueAt == date("2027-02-28T09:00:00+08:00"))
+        #expect(february.monthlyDay == 31)
+        let march = try #require(TaskRules.complete(february, at: february.dueAt!).next)
+        #expect(march.dueAt == date("2027-03-31T09:00:00+08:00"))
+    }
+    @Test func testMonthlyDayCanDifferFromInitialDueDate() throws {
+        var item = task("2026-11-09T21:00:00+08:00", rule: .monthly)
+        item.monthlyDay = 15
+        let next = try TaskRules.complete(item, at: item.dueAt!).next
+        #expect(next?.dueAt == date("2026-11-15T21:00:00+08:00"))
+    }
+    @Test func testOverdueMonthlySkipsMissedOccurrences() throws {
+        var item = task("2026-01-31T09:00:00+08:00", rule: .monthly)
+        item.monthlyDay = 31
+        let next = try TaskRules.complete(item, at: date("2026-03-31T10:00:00+08:00")).next
+        #expect(next?.dueAt == date("2026-04-30T09:00:00+08:00"))
+    }
+    @Test func testInvalidMonthlyDayRejected() {
+        var item = task("2026-11-09T09:00:00+08:00", rule: .monthly)
+        item.monthlyDay = 32
+        #expect(throws: (any Error).self) { try TaskRules.validate(item) }
+    }
+    @Test func testOldTaskPayloadWithoutMonthlyDayDecodes() throws {
+        let item = task("2026-11-09T09:00:00+08:00", rule: .weekly)
+        var payload = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(item)) as? [String: Any])
+        payload.removeValue(forKey: "monthlyDay")
+        let restored = try JSONDecoder().decode(TaskItem.self, from: JSONSerialization.data(withJSONObject: payload))
+        #expect(restored == item)
+    }
     @Test func testRepeatedCompletionIsNoOp() throws {
         let first = try TaskRules.complete(task("2026-11-02T09:00:00+08:00", rule: .daily), at: date("2026-11-02T10:00:00+08:00"))
         let second = try TaskRules.complete(first.completed, at: date("2026-11-02T10:01:00+08:00"))

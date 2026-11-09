@@ -44,7 +44,11 @@ import OfficeCore
                                 Label(format(due, zone: item.timeZoneID), systemImage: "calendar")
                                     .foregroundStyle(due < now && item.status != .completed ? Color.orange : Color.secondary)
                             } else { Label(item.dueText == nil ? "未安排时间" : "时间待补充", systemImage: "clock") }
-                            if item.repeatRule != .none { Label(LocalizedStringKey(item.repeatRule.label), systemImage: "repeat") }
+                            if item.repeatRule == .monthly, let day = item.monthlyDay {
+                                Label("每月 \(day) 号", systemImage: "repeat")
+                            } else if item.repeatRule != .none {
+                                Label(LocalizedStringKey(item.repeatRule.label), systemImage: "repeat")
+                            }
                         }.font(.caption).foregroundStyle(.secondary)
                         if let snooze = item.snoozedUntil, item.status != .completed {
                             Text("稍后提醒：\(format(snooze, zone: item.timeZoneID))").font(.caption).foregroundStyle(.blue)

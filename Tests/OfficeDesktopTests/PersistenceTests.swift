@@ -15,6 +15,16 @@ import OfficeCore
         let reopened = try CoreDataTaskRepository(url: url)
         #expect(try reopened.load() == [item])
     }
+    @Test func testMonthlyDayPersistsAfterReopen() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("test.store")
+        let item = TaskItem(title: "月报", dueAt: Date(), repeatRule: .monthly, monthlyDay: 31)
+        do { let repo = try CoreDataTaskRepository(url: url); try repo.save([item]) }
+        let reopened = try CoreDataTaskRepository(url: url)
+        #expect(try reopened.load() == [item])
+    }
     @Test(arguments: [0, 99]) func testCorruptOrUnknownSchemaPreserved(version: Int) throws {
         let repo = try CoreDataTaskRepository(inMemory: true)
         _ = TaskRecord(context: repo.context, id: UUID(), schemaVersion: version == 0 ? 1 : version, payload: Data("invalid".utf8))
