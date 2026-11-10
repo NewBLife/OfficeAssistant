@@ -104,6 +104,10 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
                             Text(dateCaption).font(.callout).foregroundStyle(.secondary)
                         }
                         Spacer()
+                        TaskCSVExportButton(items: exportItems(store), groups: model.groups.isLoaded ? model.groups.groups : nil,
+                                            displayTimeZoneID: model.preferences.value.timeZoneID,
+                                            suggestedName: "\(section?.title ?? "待办")-待办")
+                            .controlSize(.large)
                         Button(action: newTask) { Label("新增待办", systemImage: "plus") }
                             .buttonStyle(.borderedProminent).controlSize(.large).disabled(!store.isLoaded)
                     }
@@ -130,7 +134,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
                         TaskListView(items: listed, store: store, now: model.now, openMeeting: openSource, groups: model.groups) { editing = $0 }
                     }
                     if section == .today {
-                        let undated = matching(store.items.filter { $0.status != .completed && $0.dueAt == nil })
+                        let undated = undatedItems(store)
                         if !undated.isEmpty {
                             Text("未安排时间 · \(undated.count)").font(.headline).foregroundStyle(.secondary)
                             TaskListView(items: undated, store: store, now: model.now, openMeeting: openSource, groups: model.groups) { editing = $0 }
@@ -167,6 +171,13 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     }
     private func openSource(_ id: UUID, _ evidence: EvidenceReference?) { do { try model.openMeeting(id: id, evidence: evidence) } catch { sourceError = error.localizedDescription } }
     private func todayItems(_ store: TaskStore) -> [TaskItem] { store.items.filter { TaskRules.isTodayOrOverdue($0, now: model.now, displayTimeZoneID: model.preferences.value.timeZoneID) } }
+    private func undatedItems(_ store: TaskStore) -> [TaskItem] {
+        matching(store.items.filter { $0.status != .completed && $0.dueAt == nil })
+    }
+    private func exportItems(_ store: TaskStore) -> [TaskItem] {
+        let listed = filteredItems(store)
+        return section == .today ? listed + undatedItems(store) : listed
+    }
     private func matching(_ values: [TaskItem]) -> [TaskItem] {
         values.filter { search.isEmpty || "\($0.title) \($0.notes) \($0.owner ?? "")".localizedCaseInsensitiveContains(search) }
             .sorted { ($0.dueAt ?? .distantFuture) == ($1.dueAt ?? .distantFuture) ? $0.createdAt > $1.createdAt : ($0.dueAt ?? .distantFuture) < ($1.dueAt ?? .distantFuture) }

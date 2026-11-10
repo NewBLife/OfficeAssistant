@@ -45,6 +45,9 @@ import OfficeCore
                         Text("全部状态").tag(Optional<TaskStatus>.none)
                         ForEach(TaskStatus.allCases, id: \.self) { Text(LocalizedStringKey($0.label)).tag(Optional($0)) }
                     }.frame(width: 140)
+                    TaskCSVExportButton(items: listed, groups: model.groups.groups,
+                                        displayTimeZoneID: model.preferences.value.timeZoneID,
+                                        suggestedName: title + "-待办")
                     Button {
                         var item = TaskItem(title: "", timeZoneID: model.preferences.value.timeZoneID)
                         item.groupID = scope.defaultGroupID; openTask(item)
