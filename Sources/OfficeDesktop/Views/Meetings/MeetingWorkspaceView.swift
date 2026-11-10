@@ -8,6 +8,7 @@ import OfficeCore
     let scope: GroupScope
     let defaultGroupID: UUID?
     @State private var meetingSearch = ""
+    @State private var expandedGroupIDs: Set<String> = []
     let settings: AISettingsStore
     let minutes: MinutesCoordinator?; let tasks: TaskStore?; let links: MeetingTaskLinkService?; let preferences: AppPreferences
     let focus: EvidenceReference?; let sourceRequestID: UUID?; let openTask: (TaskItem) -> Void; let openMeeting: (UUID, EvidenceReference?) -> Void
@@ -48,10 +49,9 @@ import OfficeCore
                     List {
                         if let groups, groups.isLoaded {
                             ForEach(GroupContentFilter.meetingSections(controller.history, scope: scope, groups: groups.groups, search: meetingSearch)) { section in
-                                Section {
+                                meetingGroupHeader(section)
+                                if !meetingSearch.isEmpty || expandedGroupIDs.contains(section.id) {
                                     ForEach(section.meetings) { item in meetingRow(item) }
-                                } header: {
-                                    Text("\(section.title) · \(section.meetings.count)")
                                 }
                             }
                         } else {
@@ -126,6 +126,24 @@ import OfficeCore
     private var visibleHistory: [MeetingSession] {
         if let groups, !groups.isLoaded { return scope == .all ? controller.history.filter { meetingSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(meetingSearch) } : [] }
         return GroupContentFilter.meetings(controller.history, scope: scope, groups: groups?.groups ?? [], search: meetingSearch)
+    }
+    @ViewBuilder private func meetingGroupHeader(_ section: MeetingGroupSection) -> some View {
+        let label = Label("\(section.title) · \(section.meetings.count)", systemImage: !meetingSearch.isEmpty || expandedGroupIDs.contains(section.id) ? "chevron.down" : "chevron.right")
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        if meetingSearch.isEmpty {
+            Button {
+                if !expandedGroupIDs.insert(section.id).inserted {
+                    expandedGroupIDs.remove(section.id)
+                }
+            } label: {
+                label.contentShape(Rectangle())
+            }.buttonStyle(.plain)
+        } else {
+            label
+        }
     }
     private func meetingRow(_ item: MeetingSession) -> some View {
         Button {
