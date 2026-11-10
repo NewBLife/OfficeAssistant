@@ -45,20 +45,18 @@ import OfficeCore
                 VStack(spacing: 0) {
                     TextField("搜索会议标题", text: $meetingSearch).textFieldStyle(.roundedBorder).padding(10)
                     Text("\(visibleHistory.count) 场会议").font(.caption).foregroundStyle(.secondary)
-                    List(visibleHistory) { item in
-                    Button {
-                        do { try controller.open(item) } catch { self.error = error.localizedDescription }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 5) {
-                            if let groups { Text(groups.isLoaded ? GroupRules.path(item.groupID, groups: groups.groups) : "分组暂时不可用").font(.caption).foregroundStyle(.secondary) }
-                            Text(item.title).font(.headline).lineLimit(2); Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption); Text(LocalizedStringKey(item.state.label)).font(.caption).foregroundStyle(.secondary) }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
-                    }.buttonStyle(.borderless).disabled(controller.isActive)
-                    .contextMenu {
-                        if let groups { GroupMoveMenu(groups: groups, currentID: item.groupID) { try controller.moveToGroup(id: item.id, groupID: $0) }.disabled(controller.isActive && controller.meeting?.id == item.id) }
-                        Button("修改会议名称") { renaming = item }
-                        Button("删除会议", role: .destructive) { deleteAudio = false; deleting = item }
-                            .disabled(controller.isActive)
-                    }
+                    List {
+                        if let groups, groups.isLoaded {
+                            ForEach(GroupContentFilter.meetingSections(controller.history, scope: scope, groups: groups.groups, search: meetingSearch)) { section in
+                                Section {
+                                    ForEach(section.meetings) { item in meetingRow(item) }
+                                } header: {
+                                    Text("\(section.title) · \(section.meetings.count)")
+                                }
+                            }
+                        } else {
+                            ForEach(visibleHistory) { item in meetingRow(item) }
+                        }
                     }
                 }.frame(minWidth: 175, idealWidth: 210, maxWidth: 260)
                 detail.frame(minWidth: 460, maxWidth: .infinity, maxHeight: .infinity)
@@ -128,6 +126,29 @@ import OfficeCore
     private var visibleHistory: [MeetingSession] {
         if let groups, !groups.isLoaded { return scope == .all ? controller.history.filter { meetingSearch.isEmpty || $0.title.localizedCaseInsensitiveContains(meetingSearch) } : [] }
         return GroupContentFilter.meetings(controller.history, scope: scope, groups: groups?.groups ?? [], search: meetingSearch)
+    }
+    private func meetingRow(_ item: MeetingSession) -> some View {
+        Button {
+            do { try controller.open(item) } catch { self.error = error.localizedDescription }
+        } label: {
+            VStack(alignment: .leading, spacing: 5) {
+                if let groups, !groups.isLoaded {
+                    Text("分组暂时不可用").font(.caption).foregroundStyle(.secondary)
+                }
+                Text(item.title).font(.headline).lineLimit(2)
+                Text(item.startedAt.formatted(date: .abbreviated, time: .shortened)).font(.caption)
+                Text(LocalizedStringKey(item.state.label)).font(.caption).foregroundStyle(.secondary)
+            }.padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
+        }.buttonStyle(.borderless).disabled(controller.isActive)
+            .contextMenu {
+                if let groups {
+                    GroupMoveMenu(groups: groups, currentID: item.groupID) { try controller.moveToGroup(id: item.id, groupID: $0) }
+                        .disabled(controller.isActive && controller.meeting?.id == item.id)
+                }
+                Button("修改会议名称") { renaming = item }
+                Button("删除会议", role: .destructive) { deleteAudio = false; deleting = item }
+                    .disabled(controller.isActive)
+            }
     }
     private func inScope(_ meeting: MeetingSession) -> Bool {
         scope == .all || GroupRules.matches(meeting.groupID, scope: scope, groups: groups?.groups ?? [])
