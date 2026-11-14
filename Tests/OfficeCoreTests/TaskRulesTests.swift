@@ -82,4 +82,20 @@ struct TaskRulesTests {
         #expect(!(TaskRules.isTodayOrOverdue(item, now: date("2026-11-02T15:00:00Z"), displayTimeZoneID: "Asia/Shanghai")))
         #expect(item.timeZoneID == "Asia/Shanghai")
     }
+    @Test func testFutureUsesDisplayTimeZoneDayBoundary() {
+        let item = task("2026-11-03T00:30:00+08:00")
+        let now = date("2026-11-02T15:00:00Z")
+        #expect(TaskRules.isFuture(item, now: now, displayTimeZoneID: "Asia/Shanghai"))
+        #expect(!TaskRules.isFuture(item, now: now, displayTimeZoneID: "America/New_York"))
+        #expect(TaskRules.isDue(item, on: date("2026-11-03T12:00:00+08:00"), displayTimeZoneID: "Asia/Shanghai"))
+        #expect(TaskRules.isDue(item, on: date("2026-11-02T12:00:00-05:00"), displayTimeZoneID: "America/New_York"))
+    }
+    @Test func testFutureExcludesCompletedAndUndatedTasks() {
+        let now = date("2026-11-02T09:00:00+08:00")
+        var completed = task("2026-11-03T09:00:00+08:00")
+        completed.status = .completed
+        #expect(!TaskRules.isFuture(completed, now: now, displayTimeZoneID: "Asia/Shanghai"))
+        #expect(!TaskRules.isFuture(task(), now: now, displayTimeZoneID: "Asia/Shanghai"))
+        #expect(!TaskRules.isDue(task(), on: now, displayTimeZoneID: "Asia/Shanghai"))
+    }
 }

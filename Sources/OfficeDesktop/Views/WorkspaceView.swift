@@ -2,10 +2,10 @@ import SwiftUI
 import OfficeCore
 
 private enum WorkspaceSection: String, CaseIterable, Identifiable {
-    case today, all, completed, meetings, ai, settings, groups
+    case today, future, calendar, all, completed, meetings, ai, settings, groups
     var id: Self { self }
-    var title: String { switch self { case .today: "今天"; case .all: "全部待办"; case .completed: "已完成"; case .meetings: "会议记录"; case .ai: "AI 服务"; case .settings: "设置"; case .groups: "分组" } }
-    var icon: String { switch self { case .today: "sun.max"; case .all: "checklist"; case .completed: "checkmark.circle"; case .meetings: "waveform"; case .ai: "sparkles"; case .settings: "gearshape"; case .groups: "folder" } }
+    var title: String { switch self { case .today: "今天"; case .future: "未来待办"; case .calendar: "日历"; case .all: "全部待办"; case .completed: "已完成"; case .meetings: "会议记录"; case .ai: "AI 服务"; case .settings: "设置"; case .groups: "分组" } }
+    var icon: String { switch self { case .today: "sun.max"; case .future: "calendar.badge.clock"; case .calendar: "calendar"; case .all: "checklist"; case .completed: "checkmark.circle"; case .meetings: "waveform"; case .ai: "sparkles"; case .settings: "gearshape"; case .groups: "folder" } }
 }
 
 @MainActor public struct WorkspaceView: View {
@@ -56,7 +56,7 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
     private var sidebar: some View {
         List {
             Section {
-                ForEach([WorkspaceSection.today, .all, .completed]) { entry in navigationRow(entry) }
+                ForEach([WorkspaceSection.today, .future, .calendar, .all, .completed]) { entry in navigationRow(entry) }
             } header: {
                 Text(LocalizedStringKey("待办"))
             }
@@ -101,7 +101,8 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(LocalizedStringKey(section?.title ?? "今天")).font(.system(size: 30, weight: .bold))
-                            Text(dateCaption).font(.callout).foregroundStyle(.secondary)
+                            Text(section == .future ? "明天起已安排的未完成事项" : section == .calendar ? "按日期查看已安排的事项" : dateCaption)
+                                .font(.callout).foregroundStyle(.secondary)
                         }
                         Spacer()
                         TaskCSVExportButton(items: exportItems(store), groups: model.groups.isLoaded ? model.groups.groups : nil,
@@ -125,11 +126,25 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
                         }
                     }
                     let listed = filteredItems(store)
-                    if listed.isEmpty {
-                        ContentUnavailableView(search.isEmpty ? (section == .completed ? "还没有已完成事项" : "暂时没有待办") : "没有匹配的事项",
-                                               systemImage: section == .completed ? "checkmark.circle" : "checklist",
-                                               description: Text(search.isEmpty ? "点击“新增待办”，记录下一件要做的事。" : "试试其他标题、备注或负责人。"))
+                    if section == .calendar {
+                        TaskCalendarView(items: listed, store: store, now: model.now,
+                                         displayTimeZoneID: model.preferences.value.timeZoneID,
+                                         locale: locale, groups: model.groups, openMeeting: openSource,
+                                         edit: { editing = $0 })
+                    } else if listed.isEmpty {
+                        ContentUnavailableView(search.isEmpty ? (section == .completed ? "还没有已完成事项" : section == .future ? "没有未来待办" : "暂时没有待办") : "没有匹配的事项",
+                                               systemImage: section == .completed ? "checkmark.circle" : section == .future ? "calendar.badge.clock" : "checklist",
+                                               description: Text(search.isEmpty ? (section == .future ? "有截止时间的未完成事项会显示在这里。" : "点击“新增待办”，记录下一件要做的事。") : "试试其他标题、备注或负责人。"))
                             .frame(maxWidth: .infinity, minHeight: 240)
+                    } else if section == .future {
+                        let calendar = displayCalendar
+                        let days = Array(Set(listed.compactMap { $0.dueAt.map(calendar.startOfDay(for:)) })).sorted()
+                        ForEach(days, id: \.self) { day in
+                            Text(formatDay(day))
+                                .font(.headline)
+                            TaskListView(items: listed.filter { $0.dueAt.map { calendar.isDate($0, inSameDayAs: day) } ?? false },
+                                         store: store, now: model.now, openMeeting: openSource, groups: model.groups) { editing = $0 }
+                        }
                     } else {
                         TaskListView(items: listed, store: store, now: model.now, openMeeting: openSource, groups: model.groups) { editing = $0 }
                     }
@@ -157,6 +172,18 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
         formatter.timeZone = TimeZone(identifier: model.preferences.value.timeZoneID)
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMMdEEEE", options: 0, locale: locale)
         return formatter.string(from: model.now)
+    }
+    private var displayCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: model.preferences.value.timeZoneID) ?? .current
+        return calendar
+    }
+    private func formatDay(_ day: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = displayCalendar.timeZone
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "yMMMMdEEEE", options: 0, locale: locale)
+        return formatter.string(from: day)
     }
     private func newTask() {
         guard model.store?.isLoaded == true else { return }
@@ -186,6 +213,8 @@ private enum WorkspaceSection: String, CaseIterable, Identifiable {
         let values: [TaskItem]
         switch section {
         case .completed: values = store.items.filter { $0.status == .completed }
+        case .future: values = store.items.filter { TaskRules.isFuture($0, now: model.now, displayTimeZoneID: model.preferences.value.timeZoneID) }
+        case .calendar: values = store.items.filter { $0.dueAt != nil }
         case .all: values = store.items.filter { statusFilter == "全部状态" || $0.status.label == statusFilter }
         default: values = todayItems(store)
         }

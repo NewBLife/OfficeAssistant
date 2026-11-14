@@ -77,4 +77,19 @@ public enum TaskRules {
         calendar.timeZone = TimeZone(identifier: displayTimeZoneID) ?? .current
         return due < (calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) ?? now)
     }
+
+    public static func isFuture(_ item: TaskItem, now: Date, displayTimeZoneID: String) -> Bool {
+        guard item.status != .completed, let due = item.dueAt else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: displayTimeZoneID) ?? .current
+        guard let tomorrow = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now)) else { return false }
+        return due >= tomorrow
+    }
+
+    public static func isDue(_ item: TaskItem, on day: Date, displayTimeZoneID: String) -> Bool {
+        guard let due = item.dueAt else { return false }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: displayTimeZoneID) ?? .current
+        return calendar.isDate(due, inSameDayAs: day)
+    }
 }
