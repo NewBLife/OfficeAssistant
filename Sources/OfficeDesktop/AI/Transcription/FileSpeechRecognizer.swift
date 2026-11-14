@@ -26,7 +26,7 @@ import OfficeCore
         let boundary = "office-\(UUID().uuidString)"; var body = Data()
         func add(_ text: String) { body.append(Data(text.utf8)) }
         add("--\(boundary)\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\n\(model)\r\n")
-        if provider == .openai && context.configuration.effectiveRecognitionLanguage != .mixed {
+        if provider == .openai && !context.configuration.effectiveRecognitionLanguage.isMultilingual {
             add("--\(boundary)\r\nContent-Disposition: form-data; name=\"language\"\r\n\r\n\(context.language)\r\n")
         }
         add("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\nContent-Type: audio/wav\r\n\r\n")

@@ -1,7 +1,7 @@
 import SwiftUI
 import OfficeCore
 
-private enum MinutesSheet: String, Identifiable { case generate, edit, export; var id: Self { self } }
+private enum MinutesSheet: String, Identifiable { case generate, edit, memo, export; var id: Self { self } }
 @MainActor struct MeetingMinutesView: View {
     let meeting: MeetingSession; let coordinator: MinutesCoordinator; let settings: AISettingsStore
     let recording: Bool; let hasBuffered: Bool; let imported: Bool
@@ -23,6 +23,7 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                 }
                 Spacer()
                 Button("编辑纪要") { sheet = .edit }.disabled(document == nil)
+                Button(document?.supplementalMemo.isEmpty == false ? "编辑 Memo" : "补充 Memo") { sheet = .memo }.disabled(recording || coordinator.isRunning)
                 Button("导出纪要") { sheet = .export }.disabled(document == nil)
             }.padding(16)
             if coordinator.isRunning && coordinator.currentJob?.meetingID == meeting.id {
@@ -48,9 +49,15 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                     if let doc = document {
                         if coordinator.isStale(doc) { Label("原文已更新，本版本需要重新核对。", systemImage: "exclamationmark.triangle").foregroundStyle(.orange) }
                         Text(meeting.title).font(.title2.bold())
-                        Text(doc.overviewZH).textSelection(.enabled)
+                        if !doc.overviewZH.isEmpty { Text(doc.overviewZH).textSelection(.enabled) }
                         if let ja = doc.overviewJA { Text(ja).foregroundStyle(.secondary).textSelection(.enabled) }
                         pointSection("议题摘要", doc.topics); pointSection("明确决定", doc.decisions); pointSection("未解决问题", doc.openQuestions)
+                        if !doc.supplementalMemo.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("补充 Memo").font(.headline)
+                                Text(doc.supplementalMemo).textSelection(.enabled)
+                            }
+                        }
                     } else { ContentUnavailableView("等待生成会议纪要", systemImage: "doc.text", description: Text("根据已保存的最终原文生成摘要、决定、问题和行动项。仅转写会议也可使用。")) }
                     MeetingActionsView(meeting: meeting, coordinator: coordinator, tasks: tasks, links: links, preferences: preferences, showCandidates: true, openTask: openTask, openMeeting: openMeeting, groups: groups)
                 }.padding(22).frame(maxWidth: .infinity, alignment: .leading)
@@ -68,6 +75,10 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
                     }
                 case .edit:
                     if let document { MinutesEditor(document: document) { try coordinator.saveEdit($0) } }
+                case .memo:
+                    MemoEditor(text: document?.supplementalMemo ?? "") { text in
+                        try coordinator.saveMemo(meetingID: meeting.id, memo: text, basedOn: document)
+                    }
                 case .export:
                     if let document { MinutesExportOptions(document: document) { language, format in
                         let taskSnapshot = tasks?.items ?? []
@@ -96,6 +107,33 @@ private enum MinutesSheet: String, Identifiable { case generate, edit, export; v
         }
     }
     private func load() { do { documents = try coordinator.documents(meetingID: meeting.id); selected = documents.first?.id; error = nil } catch { self.error = "纪要无法读取，原记录已保留。" } }
+}
+
+@MainActor private struct MemoEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var text: String
+    @State private var error: String?
+    let save: (String) throws -> Void
+    init(text: String, save: @escaping (String) throws -> Void) {
+        _text = State(initialValue: text); self.save = save
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("补充会议 Memo").font(.title2.bold())
+            Text("记录会后补充的信息、背景或跟进备注。不会调用 AI，也不会改写转写原文和纪要内容。")
+                .font(.callout).foregroundStyle(.secondary)
+            TextEditor(text: $text).font(.body).frame(minHeight: 220)
+            if let error { Text(error).font(.callout).foregroundStyle(.orange) }
+            HStack {
+                Button("取消") { dismiss() }
+                Spacer()
+                Text("保存为新版本，历史记录保留").font(.caption).foregroundStyle(.secondary)
+                Button("保存 Memo") {
+                    do { try save(text); dismiss() } catch { self.error = error.localizedDescription }
+                }.buttonStyle(.borderedProminent).disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.padding(24).frame(width: 560, height: 420)
+    }
 }
 
 @MainActor private struct MinutesOptionsView: View {

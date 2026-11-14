@@ -39,4 +39,13 @@ extension MinutesExportTests {
         let output = try MinutesExportRenderer.render(document: doc, candidates: [candidate], linkedTasks: [task], language: .chineseJapanese, format: .plainText)
         #expect(output.contains(task.title)); #expect(output.contains("原始日文（修改后需重新核对）：15万円"))
     }
+    @Test func testMemoOnlyDocumentCanBeExportedInEitherLanguageChoice() throws {
+        var doc = MinutesDocument(meetingID: UUID(), meetingTitle: "客户沟通", options: MinutesOptions())
+        doc.supplementalMemo = "报价需含安装费用"
+        let chinese = try MinutesExportRenderer.render(document: doc, candidates: [], linkedTasks: [], language: .chinese, format: .markdown)
+        let bilingual = try MinutesExportRenderer.render(document: doc, candidates: [], linkedTasks: [], language: .chineseJapanese, format: .plainText)
+        #expect(chinese.contains("补充 Memo"))
+        #expect(chinese.contains("报价需含安装费用"))
+        #expect(bilingual.contains("报价需含安装费用"))
+    }
 }

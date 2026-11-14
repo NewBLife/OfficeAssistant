@@ -116,6 +116,29 @@ import OfficeCore
         next.createdAt = Date(); next.editedByUser = true
         try notes.save(document: next, candidates: notes.candidates(meetingID: next.meetingID)); changeCount += 1
     }
+    public func saveMemo(meetingID: UUID, memo: String, basedOn: MinutesDocument? = nil) throws {
+        guard !isRunning, !isRecording(meetingID) else { throw OfficeError.invalid("请先暂停或结束会议，再补充 Memo。") }
+        let value = memo.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty else { throw OfficeError.invalid("Memo 不能为空。") }
+        var document: MinutesDocument
+        if let basedOn {
+            guard basedOn.meetingID == meetingID else { throw OfficeError.invalid("Memo 来源会议不一致。") }
+            document = basedOn
+        } else if let latest = try documents(meetingID: meetingID).first {
+            document = latest
+        } else {
+            let source = try snapshot(meetingID)
+            document = MinutesDocument(
+                meetingID: meetingID,
+                meetingTitle: source.meeting.title,
+                options: MinutesOptions(language: .chinese)
+            )
+            document.participantsNote = source.meeting.participantsNote
+            document.sourceFingerprint = source.fingerprint
+        }
+        document.supplementalMemo = value
+        try saveEdit(document)
+    }
     public func saveCandidate(_ candidate: ActionCandidate) throws {
         var values = try notes.candidates(meetingID: candidate.meetingID)
         guard let index = values.firstIndex(where: { $0.id == candidate.id }), values[index].reviewState != .accepted else { throw OfficeError.invalid("行动项已加入待办，请在待办中修改。") }

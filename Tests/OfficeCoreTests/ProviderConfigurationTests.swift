@@ -43,4 +43,21 @@ struct ProviderConfigurationTests {
         let decoded = try JSONDecoder().decode(AIConfiguration.self, from: JSONEncoder().encode(config))
         #expect(decoded.effectiveRecognitionLanguage == .chinese); #expect(!decoded.shouldTranslate)
     }
+    @Test func testChineseEnglishDirectionsAndRecognitionLanguages() throws {
+        var config = AIConfiguration()
+        config.direction = .enToZh
+        #expect(config.direction.inputLanguage == "en")
+        #expect(config.direction.targetLanguage == "简体中文")
+        #expect(config.effectiveRecognitionLanguage == .english)
+
+        config.direction = .zhToEn
+        #expect(config.direction.inputLanguage == "zh")
+        #expect(config.direction.targetLanguage == "商务英语")
+        #expect(config.effectiveRecognitionLanguage == .chinese)
+
+        config.recognitionLanguage = .chineseEnglish
+        #expect(config.effectiveRecognitionLanguage.codes == ["zh", "en"])
+        #expect(config.effectiveRecognitionLanguage.azureLocales == ["zh-CN", "en-US"])
+        #expect(config.effectiveRecognitionLanguage.isMultilingual)
+    }
 }

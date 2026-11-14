@@ -32,7 +32,30 @@ public struct MinutesDocument: Codable, Equatable, Sendable, Identifiable {
     public var revision = 0; public var createdAt = Date(); public var sourceFingerprint = ""; public var options: MinutesOptions
     public var overviewZH = ""; public var overviewJA: String?; public var topics: [MinutesPoint] = []
     public var decisions: [MinutesPoint] = []; public var openQuestions: [MinutesPoint] = []; public var editedByUser = false
+    public var supplementalMemo = ""
     public init(meetingID: UUID, meetingTitle: String, options: MinutesOptions) { self.meetingID = meetingID; self.meetingTitle = meetingTitle; self.options = options }
+    private enum CodingKeys: String, CodingKey {
+        case id, meetingID, meetingTitle, participantsNote, revision, createdAt, sourceFingerprint, options
+        case overviewZH, overviewJA, topics, decisions, openQuestions, editedByUser, supplementalMemo
+    }
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        meetingID = try container.decode(UUID.self, forKey: .meetingID)
+        meetingTitle = try container.decode(String.self, forKey: .meetingTitle)
+        participantsNote = try container.decodeIfPresent(String.self, forKey: .participantsNote) ?? ""
+        revision = try container.decodeIfPresent(Int.self, forKey: .revision) ?? 0
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
+        sourceFingerprint = try container.decodeIfPresent(String.self, forKey: .sourceFingerprint) ?? ""
+        options = try container.decode(MinutesOptions.self, forKey: .options)
+        overviewZH = try container.decodeIfPresent(String.self, forKey: .overviewZH) ?? ""
+        overviewJA = try container.decodeIfPresent(String.self, forKey: .overviewJA)
+        topics = try container.decodeIfPresent([MinutesPoint].self, forKey: .topics) ?? []
+        decisions = try container.decodeIfPresent([MinutesPoint].self, forKey: .decisions) ?? []
+        openQuestions = try container.decodeIfPresent([MinutesPoint].self, forKey: .openQuestions) ?? []
+        editedByUser = try container.decodeIfPresent(Bool.self, forKey: .editedByUser) ?? false
+        supplementalMemo = try container.decodeIfPresent(String.self, forKey: .supplementalMemo) ?? ""
+    }
 }
 public enum CandidateClarification: String, Codable, CaseIterable, Sendable {
     case owner, deadline, commitment, meetingDate, possibleDuplicate, sourceChanged, crossChunkReview

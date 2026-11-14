@@ -8,7 +8,8 @@ public enum MinutesExportFormat: String, CaseIterable, Identifiable, Sendable {
 }
 public enum MinutesExportRenderer {
     public static func render(document: MinutesDocument, candidates: [ActionCandidate], linkedTasks: [TaskItem], language: MinutesLanguage, format: MinutesExportFormat) throws -> String {
-        if language == .chineseJapanese && (document.overviewJA ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw OfficeError.invalid("当前没有双语纪要，请先生成双语版本；导出不会自动调用翻译。") }
+        let hasGeneratedContent = !document.overviewZH.isEmpty || !document.topics.isEmpty || !document.decisions.isEmpty || !document.openQuestions.isEmpty
+        if language == .chineseJapanese && hasGeneratedContent && (document.overviewJA ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { throw OfficeError.invalid("当前没有双语纪要，请先生成双语版本；导出不会自动调用翻译。") }
         let markdown = format == .markdown
         func clean(_ text: String) -> String {
             guard markdown else { return text }
@@ -37,6 +38,9 @@ public enum MinutesExportRenderer {
                 if language == .chineseJapanese, let ja = point.textJA { lines.append("  " + clean(ja)) }
                 lines += evidence(point.evidence)
             }
+        }
+        if !document.supplementalMemo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            lines += ["", heading("补充 Memo"), clean(document.supplementalMemo)]
         }
         lines += ["", heading("行动项")]
         let tasks = linkedTasks.filter { ($0.meetingLinks ?? []).contains { $0.meetingID == document.meetingID } }

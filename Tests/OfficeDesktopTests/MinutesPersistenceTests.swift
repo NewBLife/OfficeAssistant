@@ -34,4 +34,12 @@ import OfficeCore
         #expect(throws: (any Error).self) { try repo.save(document: next, candidates: [wrong]) }
         #expect(try repo.documents(meetingID: meeting.id).count == 1)
     }
+    @Test func testOlderMinutesDecodeWithoutSupplementalMemo() throws {
+        let document = MinutesDocument(meetingID: UUID(), meetingTitle: "旧会议", options: MinutesOptions())
+        var object = try #require(try JSONSerialization.jsonObject(with: JSONEncoder().encode(document)) as? [String: Any])
+        object.removeValue(forKey: "supplementalMemo")
+        let decoded = try JSONDecoder().decode(MinutesDocument.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(decoded.supplementalMemo.isEmpty)
+        #expect(decoded.meetingID == document.meetingID)
+    }
 }

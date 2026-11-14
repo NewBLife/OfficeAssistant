@@ -18,13 +18,14 @@ public struct AzureRecognitionEvent: Sendable {
     public init() {}
     public func start(credentials: AzureSpeechCredentials, context: RecognitionContext) async throws {
         let speech = try SPXSpeechConfiguration(subscription: credentials.key, region: credentials.region)
-        speech.speechRecognitionLanguage = context.language == "ja" ? "ja-JP" : "zh-CN"
+        let recognitionLanguage = context.configuration.effectiveRecognitionLanguage
+        speech.speechRecognitionLanguage = recognitionLanguage.azureLocales.first ?? "zh-CN"
         let input = SPXPushAudioInputStream(audioFormat: SPXAudioStreamFormat(usingPCMWithSampleRate: 16000, bitsPerSample: 16, channels: 1)!)!
         let audio = SPXAudioConfiguration(streamInput: input)!
         let recognizer: SPXSpeechRecognizer
-        if context.configuration.effectiveRecognitionLanguage == .mixed {
+        if recognitionLanguage.isMultilingual {
             speech.setPropertyTo("Continuous", byName: "SpeechServiceConnection_LanguageIdMode")
-            recognizer = try SPXSpeechRecognizer(speechConfiguration: speech, autoDetectSourceLanguageConfiguration: SPXAutoDetectSourceLanguageConfiguration(["ja-JP", "zh-CN"]), audioConfiguration: audio)
+            recognizer = try SPXSpeechRecognizer(speechConfiguration: speech, autoDetectSourceLanguageConfiguration: SPXAutoDetectSourceLanguageConfiguration(recognitionLanguage.azureLocales), audioConfiguration: audio)
         } else { recognizer = try SPXSpeechRecognizer(speechConfiguration: speech, audioConfiguration: audio) }
         self.input = input; self.recognizer = recognizer; epoch = UUID(); let token = epoch
         recognizer.addRecognizingEventHandler { [weak self] _, event in

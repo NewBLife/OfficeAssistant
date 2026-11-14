@@ -31,7 +31,7 @@ import OfficeCore
         let timeout = Task { try? await Task.sleep(for: .seconds(20)); if !Task.isCancelled { socket.cancel(with: .goingAway, reason: nil) } }
         defer { timeout.cancel() }
         do {
-            var transcription: [String: Any] = ["model": context.configuration.realtimeModel, "languages": context.configuration.effectiveRecognitionLanguage == .mixed ? ["ja", "zh"] : [context.language], "delay": "low"]
+            var transcription: [String: Any] = ["model": context.configuration.realtimeModel, "languages": context.configuration.effectiveRecognitionLanguage.codes, "delay": "low"]
             let terms = context.configuration.glossary.map(\.source).filter { !$0.contains("\n") && !$0.contains("<") && !$0.contains(">") }
             if !terms.isEmpty { transcription["keywords"] = terms }
             try await send(["type": "session.update", "session": ["type": "transcription", "audio": ["input": ["format": ["type": "audio/pcm", "rate": 24000], "transcription": transcription, "turn_detection": NSNull()]]]])

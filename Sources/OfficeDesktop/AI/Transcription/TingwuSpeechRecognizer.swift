@@ -17,8 +17,12 @@ public struct TingwuTaskHandle { public let taskID: String; let joinURL: URL }
         return (response["Data"] as? [String: Any]) ?? [:]
     }
     public func start(context: RecognitionContext, created: ((RemoteTask) throws -> Void)? = nil) async throws -> TingwuTaskHandle {
-        var input: [String: Any] = ["Format": "pcm", "SampleRate": 16000, "SourceLanguage": context.language == "ja" ? "ja" : "cn"]
-        if context.configuration.effectiveRecognitionLanguage == .mixed { input["SourceLanguage"] = "multilingual"; input["LanguageHints"] = ["ja", "cn"] }
+        let recognitionLanguage = context.configuration.effectiveRecognitionLanguage
+        var input: [String: Any] = ["Format": "pcm", "SampleRate": 16000, "SourceLanguage": context.language == "ja" ? "ja" : (context.language == "en" ? "en" : "cn")]
+        if recognitionLanguage.isMultilingual {
+            input["SourceLanguage"] = "multilingual"
+            input["LanguageHints"] = recognitionLanguage.codes.map { $0 == "zh" ? "cn" : $0 }
+        }
         let response = try await call(body: ["Input": input, "TaskKey": "office.\(context.meetingID).\(context.source.rawValue).\(UUID())"], operation: "start")
         guard let id = response["TaskId"] as? String else { throw OfficeError.invalid("听悟未返回任务编号，请到服务控制台核对本次任务。") }
         do {

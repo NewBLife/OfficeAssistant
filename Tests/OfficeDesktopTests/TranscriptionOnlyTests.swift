@@ -50,4 +50,15 @@ import OfficeCore
         #expect(body.contains("name=\"language\"\r\n\r\nzh\r\n"))
         await speech.cancel()
     }
+    @Test func testOpenAIFileReceivesEnglishRecognitionLanguage() async throws {
+        let speech = FileSpeechRecognizer(credentials: SpeechOnlyCredentials(), transport: TestTransport())
+        var config = AIConfiguration(); config.translationEnabled = false; config.recognitionLanguage = .english
+        let context = RecognitionContext(meetingID: UUID(), source: .file, configuration: config)
+        #expect(context.language == "en")
+        try await speech.start(context)
+        let request = try speech.request(AudioUtterance(id: context.id(0), startSeconds: 0, pcm: Data(count: 48000)))
+        let body = String(decoding: request.httpBody!, as: UTF8.self)
+        #expect(body.contains("name=\"language\"\r\n\r\nen\r\n"))
+        await speech.cancel()
+    }
 }

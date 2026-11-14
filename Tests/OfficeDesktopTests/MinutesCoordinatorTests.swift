@@ -52,6 +52,30 @@ import OfficeCore
         var edited = segment; edited.revision += 1; edited.finalText = "修改后的原文"; try repo.upsert(edited)
         #expect(service.isStale(document))
     }
+    @Test func testMemoCanBeAddedWithoutGeneratingMinutesAndPreservesHistory() async throws {
+        let (repo, meeting, _) = try data()
+        let fake = FakeMinutesGenerator()
+        let service = MinutesCoordinator(meetings: repo, notes: repo, generator: fake)
+
+        try service.saveMemo(meetingID: meeting.id, memo: "客户补充：报价需包含安装费用。")
+
+        let first = try #require(repo.documents(meetingID: meeting.id).first)
+        #expect(first.supplementalMemo == "客户补充：报价需包含安装费用。")
+        #expect(first.overviewZH.isEmpty)
+        #expect(!fake.started)
+
+        try service.saveMemo(meetingID: meeting.id, memo: "客户补充：报价需包含安装费用。\n周五前发送。")
+        let history = try repo.documents(meetingID: meeting.id)
+        #expect(history.count == 2)
+        #expect(history[0].supplementalMemo.contains("周五前发送"))
+        #expect(history[1].supplementalMemo == "客户补充：报价需包含安装费用。")
+    }
+    @Test func testMemoCannotBeSavedDuringRecordingOrWhenEmpty() throws {
+        let (repo, meeting, _) = try data()
+        let service = MinutesCoordinator(meetings: repo, notes: repo, generator: FakeMinutesGenerator(), isRecording: { _ in true })
+        #expect(throws: (any Error).self) { try service.saveMemo(meetingID: meeting.id, memo: "稍后跟进") }
+        #expect(try repo.documents(meetingID: meeting.id).isEmpty)
+    }
 }
 
 extension MinutesCoordinatorTests {

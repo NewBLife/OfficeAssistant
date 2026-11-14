@@ -20,16 +20,69 @@ public enum AIProvider: String, Codable, CaseIterable, Identifiable, Sendable {
     case .siliconflow: "deepseek-ai/DeepSeek-V4-Flash"; default: "" } }
 }
 public enum TranslationDirection: String, Codable, CaseIterable, Identifiable, Sendable {
-    case jaToZh, zhToJa
+    case jaToZh, zhToJa, enToZh, zhToEn
     public var id: Self { self }
-    public var label: String { self == .jaToZh ? "日语 → 中文" : "中文 → 商务日语" }
-    public var inputLanguage: String { self == .jaToZh ? "ja" : "zh" }
+    public var label: String {
+        switch self {
+        case .jaToZh: "日语 → 中文"
+        case .zhToJa: "中文 → 商务日语"
+        case .enToZh: "英语 → 中文"
+        case .zhToEn: "中文 → 商务英语"
+        }
+    }
+    public var inputLanguage: String {
+        switch self {
+        case .jaToZh: "ja"
+        case .zhToJa, .zhToEn: "zh"
+        case .enToZh: "en"
+        }
+    }
+    public var targetLanguage: String {
+        switch self {
+        case .jaToZh, .enToZh: "简体中文"
+        case .zhToJa: "商务日语"
+        case .zhToEn: "商务英语"
+        }
+    }
 }
 public enum RecognitionLanguage: String, Codable, CaseIterable, Identifiable, Sendable {
-    case chinese, japanese, mixed
+    case chinese, japanese, mixed, english, chineseEnglish
     public var id: Self { self }
-    public var label: String { switch self { case .chinese: "中文"; case .japanese: "日语"; case .mixed: "中日混合" } }
-    public var code: String { self == .chinese ? "zh" : "ja" }
+    public var label: String {
+        switch self {
+        case .chinese: "中文"
+        case .japanese: "日语"
+        case .mixed: "中日混合"
+        case .english: "英语"
+        case .chineseEnglish: "中英混合"
+        }
+    }
+    public var code: String {
+        switch self {
+        case .chinese, .chineseEnglish: "zh"
+        case .japanese, .mixed: "ja"
+        case .english: "en"
+        }
+    }
+    public var codes: [String] {
+        switch self {
+        case .chinese: ["zh"]
+        case .japanese: ["ja"]
+        case .mixed: ["ja", "zh"]
+        case .english: ["en"]
+        case .chineseEnglish: ["zh", "en"]
+        }
+    }
+    public var azureLocales: [String] {
+        codes.map { code in
+            switch code {
+            case "ja": "ja-JP"
+            case "en": "en-US"
+            default: "zh-CN"
+            }
+        }
+    }
+    public var isMultilingual: Bool { codes.count > 1 }
 }
 public struct GlossaryEntry: Codable, Equatable, Identifiable, Sendable {
     public var id = UUID()
@@ -53,7 +106,16 @@ public struct AIConfiguration: Codable, Equatable, Sendable {
     public init() {}
     public var textModel: String { textModels[translationProvider.rawValue] ?? translationProvider.defaultTextModel }
     public var shouldTranslate: Bool { translationEnabled ?? true }
-    public var effectiveRecognitionLanguage: RecognitionLanguage { recognitionLanguage ?? (mixedLanguages ? .mixed : (direction == .jaToZh ? .japanese : .chinese)) }
+    public var effectiveRecognitionLanguage: RecognitionLanguage {
+        if let recognitionLanguage { return recognitionLanguage }
+        if mixedLanguages { return .mixed }
+        return switch direction {
+        case .jaToZh: .japanese
+        case .zhToJa: .chinese
+        case .enToZh: .english
+        case .zhToEn: .chinese
+        }
+    }
     public var modeLabel: String { shouldTranslate ? "转写并翻译" : "仅转写" }
     public func validate() throws {
         guard speechProvider.supportsSpeech else { throw OfficeError.invalid("所选服务不支持语音识别。") }

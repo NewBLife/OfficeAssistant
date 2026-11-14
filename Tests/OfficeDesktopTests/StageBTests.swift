@@ -64,6 +64,24 @@ struct SSEDecoderTests {
         let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
         #expect((body["thinking"] as? [String: String])?["type"] == "disabled")
     }
+    @Test(arguments: [
+        (TranslationDirection.enToZh, "简体中文"),
+        (.zhToEn, "商务英语")
+    ])
+    func testEnglishTranslationDirectionsSetTargetAndBusinessPrompt(_ direction: TranslationDirection, _ target: String) throws {
+        let service = ChatCompletionTranslator(credentials: TestCredentials(), transport: TestTransport())
+        var configuration = AIConfiguration()
+        configuration.direction = direction
+        let segment = TranscriptSegment(id: SegmentID(meetingID: UUID(), source: .microphone, sequence: 0))
+        let request = try service.request(segment: segment, configuration: configuration, context: [])
+        let body = try #require(try JSONSerialization.jsonObject(with: request.httpBody!) as? [String: Any])
+        let messages = try #require(body["messages"] as? [[String: Any]])
+        let system = try #require(messages.first?["content"] as? String)
+        let user = try #require(messages.last?["content"] as? String)
+        let payload = try #require(try JSONSerialization.jsonObject(with: Data(user.utf8)) as? [String: Any])
+        #expect(payload["target_language"] as? String == target)
+        if direction == .zhToEn { #expect(system.contains("商务英语")) }
+    }
     @Test func testReasoningIgnoredAndProperFinishRequired() async throws {
         let transport = TestTransport()
         transport.responses = [Data("data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"private\",\"content\":\"译文\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n".utf8)]
